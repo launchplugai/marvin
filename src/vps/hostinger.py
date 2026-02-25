@@ -351,6 +351,82 @@ class HostingerVPSClient:
             "delete_firewall_rule",
         )
 
+    # ── Docker Management ─────────────────────────────────────────
+
+    def list_docker_projects(self, vm_id: int) -> List[Dict[str, Any]]:
+        """List all Docker Compose projects on a VM."""
+        resp = self._request("GET", f"/virtual-machines/{vm_id}/docker")
+        if resp is None or resp.status_code != 200:
+            return []
+        try:
+            return resp.json()
+        except ValueError:
+            return []
+
+    def get_docker_project(self, vm_id: int, project_name: str) -> Optional[Dict[str, Any]]:
+        """Get details of a specific Docker Compose project."""
+        resp = self._request("GET", f"/virtual-machines/{vm_id}/docker/{project_name}")
+        if resp is None or resp.status_code != 200:
+            return None
+        try:
+            return resp.json()
+        except ValueError:
+            return None
+
+    def deploy_docker_project(
+        self, vm_id: int, compose_content: str,
+        project_name: str = None, env_vars: Dict[str, str] = None,
+    ) -> ActionResult:
+        """
+        Deploy a Docker Compose project to a VM.
+
+        Args:
+            vm_id: Target virtual machine ID.
+            compose_content: Docker Compose YAML content.
+            project_name: Optional project name.
+            env_vars: Optional environment variables for the compose file.
+        """
+        payload = {"compose": compose_content}
+        if project_name:
+            payload["project_name"] = project_name
+        if env_vars:
+            payload["env"] = env_vars
+        return self._action(
+            "POST", f"/virtual-machines/{vm_id}/docker",
+            "deploy_docker", vm_id, json=payload,
+        )
+
+    def remove_docker_project(self, vm_id: int, project_name: str) -> ActionResult:
+        """Remove (docker-compose down) a project from a VM."""
+        return self._action(
+            "DELETE", f"/virtual-machines/{vm_id}/docker/{project_name}/down",
+            "remove_docker", vm_id,
+        )
+
+    # ── Public Keys ──────────────────────────────────────────────
+
+    def list_public_keys(self) -> List[Dict[str, Any]]:
+        """List all SSH public keys on the account."""
+        resp = self._request("GET", "/public-keys")
+        if resp is None or resp.status_code != 200:
+            return []
+        try:
+            data = resp.json()
+            return data.get("data", data) if isinstance(data, dict) else data
+        except ValueError:
+            return []
+
+    def create_public_key(self, name: str, key: str) -> ActionResult:
+        """Register a new SSH public key."""
+        return self._action(
+            "POST", "/public-keys", "create_public_key",
+            json={"name": name, "key": key},
+        )
+
+    def delete_public_key(self, key_id: int) -> ActionResult:
+        """Delete an SSH public key."""
+        return self._action("DELETE", f"/public-keys/{key_id}", "delete_public_key")
+
     # ── Backups & Metrics ────────────────────────────────────────
 
     def get_backups(self, vm_id: int) -> List[Dict[str, Any]]:

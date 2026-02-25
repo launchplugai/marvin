@@ -7,6 +7,7 @@ Provides:
 - Mission Control (MissionControl) — unified orchestrator for Ira
 - State Engine (StateEngine) — persistent SQLite ledger
 - Context Chain (ContextChain) — constitutional recovery chain
+- SSH Exec Bridge (SSHExecBridge) — remote command execution
 """
 
 from .client import VPSClient, VPSStatus, ServiceInfo, DeployResult
@@ -17,6 +18,7 @@ from .mission_control import (
 )
 from .state import StateEngine, Event, AgentSnapshot
 from .context_chain import ContextChain, ChainLink
+from .ssh_bridge import SSHExecBridge, ExecResult
 
 __all__ = [
     'VPSClient', 'VPSStatus', 'ServiceInfo', 'DeployResult',
@@ -25,4 +27,5 @@ __all__ = [
     'AuditEntry', 'Severity', 'ContainerHealth',
     'StateEngine', 'Event', 'AgentSnapshot',
     'ContextChain', 'ChainLink',
+    'SSHExecBridge', 'ExecResult',
 ]

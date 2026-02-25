@@ -17,6 +17,7 @@ from vps.mission_control import (
     Severity, ContainerHealth,
 )
 from vps.hostinger import VMInfo, ActionResult
+from vps.ssh_bridge import ExecResult
 
 PROJECT_ROOT = str(Path(__file__).parent.parent.parent)
 
@@ -939,6 +940,174 @@ class TestMCContextIntegration:
         health = mc.verify_chain()
         assert health["total"] > 0
         assert "docs" in health
+
+
+# ── Firewall Security Tests ──────────────────────────────────────
+
+class TestSecurePort:
+    """Test Mission Control's secure_port method."""
+
+    def test_secure_port_removes_open_and_adds_restricted(self, mock_client):
+        mc, client = mock_client
+        client.list_firewalls.return_value = [
+            {
+                "id": 100,
+                "rules": [
+                    {"id": 1, "port": "46282", "protocol": "TCP", "source": "0.0.0.0/0"},
+                    {"id": 2, "port": "22", "protocol": "TCP", "source": "0.0.0.0/0"},
+                ],
+            }
+        ]
+        client.delete_firewall_rule.return_value = ActionResult(
+            success=True, action="delete_firewall_rule",
+        )
+        client.create_firewall_rule.return_value = ActionResult(
+            success=True, action="create_firewall_rule",
+        )
+        client.activate_firewall.return_value = ActionResult(
+            success=True, action="activate_firewall",
+        )
+
+        actions = mc.secure_port("46282", ["10.0.0.1/32", "192.168.1.0/24"])
+
+        # Should have removed the 0.0.0.0/0 rule
+        assert any(a["action"] == "remove_open_rule" for a in actions)
+        # Should have added restricted rules
+        restricted = [a for a in actions if a["action"] == "add_restricted_rule"]
+        assert len(restricted) == 2
+        sources = {a["source"] for a in restricted}
+        assert "10.0.0.1/32" in sources
+        assert "192.168.1.0/24" in sources
+
+    def test_secure_port_creates_firewall_if_none(self, mock_client):
+        mc, client = mock_client
+        client.list_firewalls.return_value = []
+        client.create_firewall.return_value = ActionResult(
+            success=True, action="create_firewall",
+            data={"id": 200},
+        )
+        client.create_firewall_rule.return_value = ActionResult(
+            success=True, action="create_firewall_rule",
+        )
+        client.activate_firewall.return_value = ActionResult(
+            success=True, action="activate_firewall",
+        )
+
+        actions = mc.secure_port("46282", ["1.2.3.4/32"])
+        assert any(a["action"] == "add_restricted_rule" for a in actions)
+
+    def test_secure_port_doesnt_touch_other_ports(self, mock_client):
+        mc, client = mock_client
+        client.list_firewalls.return_value = [
+            {
+                "id": 100,
+                "rules": [
+                    {"id": 1, "port": "46282", "protocol": "TCP", "source": "0.0.0.0/0"},
+                    {"id": 2, "port": "22", "protocol": "TCP", "source": "0.0.0.0/0"},
+                ],
+            }
+        ]
+        client.delete_firewall_rule.return_value = ActionResult(success=True, action="del")
+        client.create_firewall_rule.return_value = ActionResult(success=True, action="add")
+        client.activate_firewall.return_value = ActionResult(success=True, action="act")
+
+        mc.secure_port("46282", ["1.2.3.4/32"])
+
+        # Only port 46282 rule should be deleted, not port 22
+        delete_calls = client.delete_firewall_rule.call_args_list
+        for call in delete_calls:
+            # Rule ID 1 is the 46282 rule, not rule ID 2 (port 22)
+            assert call[0][1] == 1
+
+
+# ── SSH Bridge Integration Tests ─────────────────────────────────
+
+class TestMCSSHIntegration:
+    """Test Mission Control's SSH exec integration."""
+
+    def test_ssh_property_none_without_paramiko(self, mock_client):
+        mc, _ = mock_client
+        # SSH property should return something or None depending on config
+        # Without explicit host and no VPS_HOST env, it may be None
+        with patch.dict(os.environ, {}, clear=True):
+            mc._ssh_host = None
+            mc._last_status = None
+            mc._ssh = None
+            result = mc.ssh
+            # No host configured, should return None
+            assert result is None
+
+    def test_ssh_property_with_host(self, mock_client):
+        mc, _ = mock_client
+        mc._ssh_host = "1.2.3.4"
+        mc._ssh = None  # Force re-init
+        bridge = mc.ssh
+        assert bridge is not None
+        assert bridge.host == "1.2.3.4"
+
+    def test_exec_on_vps_no_bridge(self, mock_client):
+        mc, _ = mock_client
+        mc._ssh_host = None
+        mc._ssh = None
+        with patch.dict(os.environ, {}, clear=True):
+            mc._last_status = None
+            result = mc.exec_on_vps("ls")
+            assert result is None
+
+    def test_exec_on_vps_with_bridge(self, mock_client):
+        mc, _ = mock_client
+        mock_bridge = MagicMock()
+        mock_bridge.exec.return_value = ExecResult(
+            command="ls", exit_code=0, stdout="file.txt",
+            stderr="", success=True, duration_ms=50,
+        )
+        mc._ssh = mock_bridge
+
+        result = mc.exec_on_vps("ls")
+        assert result.success is True
+        assert result.stdout == "file.txt"
+
+    def test_docker_exec_on_vps(self, mock_client):
+        mc, _ = mock_client
+        mock_bridge = MagicMock()
+        mock_bridge.docker_exec.return_value = ExecResult(
+            command="docker exec c1 ls", exit_code=0, stdout="app",
+            stderr="", success=True, duration_ms=80,
+        )
+        mc._ssh = mock_bridge
+
+        result = mc.docker_exec_on_vps("c1", "ls")
+        assert result.success is True
+        mock_bridge.docker_exec.assert_called_once_with("c1", "ls", timeout=None)
+
+    def test_openclaw_exec(self, mock_client):
+        mc, _ = mock_client
+        mock_bridge = MagicMock()
+        mock_bridge.docker_exec.return_value = ExecResult(
+            command="docker exec oc openclaw --version", exit_code=0,
+            stdout="openclaw 1.2.3", stderr="", success=True, duration_ms=100,
+        )
+        mc._ssh = mock_bridge
+
+        result = mc.openclaw_exec("--version")
+        assert result.success is True
+        mock_bridge.docker_exec.assert_called_once_with(
+            "openclaw-quzk-openclaw-1", "openclaw --version", timeout=None,
+        )
+
+    def test_openclaw_exec_custom_container(self, mock_client):
+        mc, _ = mock_client
+        mock_bridge = MagicMock()
+        mock_bridge.docker_exec.return_value = ExecResult(
+            command="cmd", exit_code=0, stdout="ok",
+            stderr="", success=True, duration_ms=10,
+        )
+        mc._ssh = mock_bridge
+
+        mc.openclaw_exec("models list", container="my-openclaw")
+        mock_bridge.docker_exec.assert_called_once_with(
+            "my-openclaw", "openclaw models list", timeout=None,
+        )
 
 
 if __name__ == "__main__":

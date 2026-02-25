@@ -25,6 +25,7 @@ Usage:
 """
 
 import logging
+import os
 import time
 from dataclasses import dataclass, field, asdict
 from enum import Enum
@@ -33,6 +34,7 @@ from typing import Optional, Dict, Any, List
 from .hostinger import HostingerVPSClient, VMInfo, ActionResult
 from .state import StateEngine
 from .context_chain import ContextChain
+from .ssh_bridge import SSHExecBridge, ExecResult, HAS_PARAMIKO
 
 logger = logging.getLogger(__name__)
 
@@ -126,10 +128,11 @@ class MissionControl:
     All operations go through the Hostinger API — no SSH needed.
     Maintains a persistent state engine and supports automated healing.
 
-    Three layers:
+    Four layers:
     1. Hostinger API client — talks to the VPS
     2. State engine — persistent SQLite ledger (events, agents, progress)
     3. Context chain — constitutional recovery docs for rebuilding awareness
+    4. SSH exec bridge — remote command execution (docker exec, etc.)
     """
 
     def __init__(
@@ -139,6 +142,8 @@ class MissionControl:
         auto_discover: bool = True,
         db_path: str = None,
         project_root: str = None,
+        ssh_host: str = None,
+        ssh_key_path: str = None,
     ):
         """
         Initialize Mission Control.
@@ -150,6 +155,8 @@ class MissionControl:
             auto_discover: Auto-detect VM ID if not provided.
             db_path: Path for the state SQLite database.
             project_root: Root path for finding design docs.
+            ssh_host: VPS IP for SSH bridge (or VPS_HOST env var).
+            ssh_key_path: Path to SSH private key.
         """
         self.client = HostingerVPSClient(api_token=api_token)
         self.vm_id = vm_id
@@ -161,6 +168,11 @@ class MissionControl:
 
         # Constitutional recovery chain
         self.chain = ContextChain(project_root=project_root)
+
+        # SSH exec bridge (lazy — connects on first use)
+        self._ssh_host = ssh_host
+        self._ssh_key_path = ssh_key_path
+        self._ssh: Optional[SSHExecBridge] = None
 
         if self.vm_id is None and auto_discover:
             self._discover_vm()
@@ -409,6 +421,84 @@ class MissionControl:
         # Activate on VM if needed
         if result.success and self.vm_id:
             self.client.activate_firewall(fw_id, self.vm_id)
+
+    def secure_port(
+        self, port: str, allowed_sources: List[str],
+        protocol: str = "TCP",
+    ) -> List[Dict[str, Any]]:
+        """
+        Restrict a port to specific source IPs/CIDRs only.
+
+        Removes any existing 0.0.0.0/0 rule for the port and replaces
+        with rules scoped to the allowed sources. This is how you lock
+        down OpenClaw's gateway (port 46282) to only your IPs.
+
+        Args:
+            port: Port to restrict (e.g. "46282").
+            allowed_sources: List of CIDRs (e.g. ["1.2.3.4/32", "10.0.0.0/8"]).
+            protocol: TCP or UDP.
+
+        Returns:
+            List of actions taken.
+        """
+        actions = []
+        firewalls = self.client.list_firewalls()
+
+        fw_id = None
+        for fw in firewalls:
+            fw_id = fw.get("id")
+            # Remove any existing wide-open rules for this port
+            for rule in fw.get("rules", []):
+                if (rule.get("port") == port
+                        and rule.get("source") in ("0.0.0.0/0", "::/0", "")):
+                    result = self.client.delete_firewall_rule(fw_id, rule["id"])
+                    action = {
+                        "action": "remove_open_rule",
+                        "port": port,
+                        "old_source": rule.get("source"),
+                        "success": result.success,
+                    }
+                    actions.append(action)
+                    self._audit(
+                        "secure_port_remove", f"{protocol}/{port}",
+                        result.success, f"removed {rule.get('source')}", "security",
+                    )
+            break
+
+        if fw_id is None:
+            result = self.client.create_firewall("mission-control-security")
+            if result.success and result.data:
+                fw_id = result.data.get("id")
+            else:
+                actions.append({
+                    "action": "create_firewall_failed",
+                    "success": False,
+                    "detail": result.message,
+                })
+                return actions
+
+        # Add restricted rules for each allowed source
+        for source in allowed_sources:
+            result = self.client.create_firewall_rule(
+                fw_id, protocol=protocol, port=port, source=source,
+            )
+            action = {
+                "action": "add_restricted_rule",
+                "port": port,
+                "source": source,
+                "success": result.success,
+            }
+            actions.append(action)
+            self._audit(
+                "secure_port_allow", f"{protocol}/{port}",
+                result.success, f"allow {source}", "security",
+            )
+
+        # Activate on VM
+        if self.vm_id and fw_id:
+            self.client.activate_firewall(fw_id, self.vm_id)
+
+        return actions
 
     def lockdown(self, keep_ports: List[str] = None):
         """
@@ -676,6 +766,97 @@ class MissionControl:
     def get_state_stats(self) -> Dict[str, Any]:
         """Get statistics from the persistent state engine."""
         return self.state.get_stats()
+
+    # ── SSH Exec Bridge ──────────────────────────────────────────
+
+    @property
+    def ssh(self) -> Optional["SSHExecBridge"]:
+        """
+        Lazy-initialized SSH bridge.
+        Returns None if paramiko isn't installed.
+        """
+        if self._ssh is not None:
+            return self._ssh
+
+        if not HAS_PARAMIKO:
+            logger.debug("paramiko not installed — SSH bridge unavailable")
+            return None
+
+        # Get host from VPS status if not explicitly provided
+        host = self._ssh_host
+        if not host and self._last_status:
+            host = self._last_status.ip_address
+        if not host:
+            host = os.environ.get("VPS_HOST", "")
+
+        if not host:
+            return None
+
+        self._ssh = SSHExecBridge(
+            host=host,
+            key_path=self._ssh_key_path,
+        )
+        return self._ssh
+
+    def exec_on_vps(self, command: str, timeout: int = None) -> Optional["ExecResult"]:
+        """
+        Execute a command on the VPS via SSH.
+        Returns None if SSH bridge is unavailable.
+        """
+        if not self.ssh:
+            logger.warning("SSH bridge not available — configure host and key")
+            return None
+
+        result = self.ssh.exec(command, timeout=timeout)
+
+        # Log to persistent state
+        self.state.log(
+            agent="ira", category="action", action="ssh_exec",
+            target=command[:100], success=result.success,
+            detail=f"exit={result.exit_code} {result.duration_ms:.0f}ms",
+            context={"stdout_preview": result.stdout[:200] if result.stdout else ""},
+        )
+
+        return result
+
+    def docker_exec_on_vps(
+        self, container: str, command: str, timeout: int = None,
+    ) -> Optional["ExecResult"]:
+        """
+        Execute a command inside a Docker container on the VPS.
+        Returns None if SSH bridge is unavailable.
+        """
+        if not self.ssh:
+            logger.warning("SSH bridge not available — configure host and key")
+            return None
+
+        result = self.ssh.docker_exec(container, command, timeout=timeout)
+
+        self.state.log(
+            agent="ira", category="action", action="docker_exec",
+            target=f"{container}:{command[:80]}",
+            success=result.success,
+            detail=f"exit={result.exit_code} {result.duration_ms:.0f}ms",
+        )
+
+        return result
+
+    def openclaw_exec(
+        self, command: str,
+        container: str = "openclaw-quzk-openclaw-1",
+        timeout: int = None,
+    ) -> Optional["ExecResult"]:
+        """
+        Execute an OpenClaw command inside its container.
+        Convenience wrapper for docker_exec_on_vps.
+
+        Usage:
+            mc.openclaw_exec("--version")
+            mc.openclaw_exec("models list")
+            mc.openclaw_exec("models status --plain")
+        """
+        full_cmd = f"openclaw {command}" if not command.startswith("openclaw") else command
+        return self.docker_exec_on_vps(container, full_cmd, timeout=timeout)
 
     # ── Convenience ──────────────────────────────────────────────
 

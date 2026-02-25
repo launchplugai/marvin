@@ -3,6 +3,8 @@
 Unit tests for Mission Control — Ira's Infrastructure Command Center
 """
 
+import os
+import tempfile
 import pytest
 import sys
 from pathlib import Path
@@ -16,12 +18,17 @@ from vps.mission_control import (
 )
 from vps.hostinger import VMInfo, ActionResult
 
+PROJECT_ROOT = str(Path(__file__).parent.parent.parent)
+
 
 # ── Fixtures ─────────────────────────────────────────────────────
 
 @pytest.fixture
 def mock_client():
-    """Create a MissionControl with a mocked Hostinger client."""
+    """Create a MissionControl with a mocked Hostinger client and temp DB."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+
     with patch("vps.mission_control.HostingerVPSClient") as MockClient:
         instance = MockClient.return_value
         instance.api_token = "test-token"
@@ -36,20 +43,31 @@ def mock_client():
                    os="Ubuntu 24.04 with Docker")
         ]
 
-        mc = MissionControl(api_token="test-token")
+        mc = MissionControl(api_token="test-token", db_path=db_path,
+                            project_root=PROJECT_ROOT)
         yield mc, instance
+
+    mc.state.close()
+    os.unlink(db_path)
 
 
 @pytest.fixture
 def mc_no_vm():
     """MissionControl with no VM discovered."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+
     with patch("vps.mission_control.HostingerVPSClient") as MockClient:
         instance = MockClient.return_value
         instance.api_token = "test-token"
         instance.list_vms.return_value = []
 
-        mc = MissionControl(api_token="test-token")
+        mc = MissionControl(api_token="test-token", db_path=db_path,
+                            project_root=PROJECT_ROOT)
         yield mc, instance
+
+    mc.state.close()
+    os.unlink(db_path)
 
 
 # ── Initialization Tests ─────────────────────────────────────────
@@ -823,6 +841,104 @@ class TestHostingerDockerEndpoints:
 
         result = client.delete_public_key(42)
         assert result.success is True
+
+
+# ── Integrated State & Context Tests ─────────────────────────────
+
+class TestMCStateIntegration:
+    """Test Mission Control's integrated state engine methods."""
+
+    def test_log_event_persists(self, mock_client):
+        mc, _ = mock_client
+        eid = mc.log_event("ralph", "plan_sprint", target="phase_2")
+        assert eid >= 1
+
+        events = mc.get_recent_events()
+        assert any(e["action"] == "plan_sprint" for e in events)
+
+    def test_audit_persists_to_state(self, mock_client):
+        mc, client = mock_client
+        client.deploy_docker_project.return_value = ActionResult(
+            success=True, action="deploy_docker", vm_id=1405440,
+        )
+        mc.deploy("redis", REDIS_COMPOSE)
+
+        # Should be in both in-memory audit and persistent state
+        assert len(mc.get_audit_log()) == 1
+        events = mc.get_recent_events()
+        assert any(e["action"] == "deploy" for e in events)
+
+    def test_log_decision(self, mock_client):
+        mc, _ = mock_client
+        did = mc.log_decision(
+            agent="ira", title="Use Redis for caching",
+            context="Need fast KV store", choice="Redis 7",
+        )
+        assert did >= 1
+
+    def test_log_model_usage(self, mock_client):
+        mc, _ = mock_client
+        mc.log_model_usage("llama-8b", "groq", action="classify",
+                           tokens_in=100, tokens_out=50)
+        diag = mc.get_diagnostics(hours=1)
+        assert diag["totals"]["total_calls"] == 1
+
+    def test_set_and_get_agent_status(self, mock_client):
+        mc, _ = mock_client
+        mc.set_agent_status("ralph", "working", current_task="sprint planning")
+        agents = mc.get_all_agents()
+        ralph = [a for a in agents if a["agent"] == "ralph"]
+        assert len(ralph) == 1
+        assert ralph[0]["status"] == "working"
+
+    def test_progress_tracking(self, mock_client):
+        mc, _ = mock_client
+        tid = mc.add_task("phase_1", "Build cache layer", owner="ira")
+        mc.update_task(tid, "done")
+
+        progress = mc.get_progress("phase_1")
+        assert len(progress) == 1
+        assert progress[0]["status"] == "done"
+
+        summary = mc.get_progress_summary()
+        assert summary["completed"] == 1
+
+    def test_state_stats(self, mock_client):
+        mc, _ = mock_client
+        mc.log_event("ira", "deploy")
+        stats = mc.get_state_stats()
+        assert stats["events"] >= 1
+
+
+class TestMCContextIntegration:
+    """Test Mission Control's integrated context chain methods."""
+
+    def test_get_context(self, mock_client):
+        mc, _ = mock_client
+        mc.log_event("ira", "deploy", target="redis")
+
+        ctx = mc.get_context("ira")
+        assert ctx["agent"] == "ira"
+        assert "constitutional_primer" in ctx
+        assert len(ctx["reading_order"]) > 0
+
+    def test_get_recovery_chain(self, mock_client):
+        mc, _ = mock_client
+        chain = mc.get_recovery_chain("ira")
+        assert len(chain) > 0
+        # Constitution first
+        assert chain[0]["category"] == "constitution"
+
+    def test_get_recovery_chain_all(self, mock_client):
+        mc, _ = mock_client
+        chain = mc.get_recovery_chain()
+        assert len(chain) > 0
+
+    def test_verify_chain(self, mock_client):
+        mc, _ = mock_client
+        health = mc.verify_chain()
+        assert health["total"] > 0
+        assert "docs" in health
 
 
 if __name__ == "__main__":

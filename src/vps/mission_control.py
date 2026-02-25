@@ -10,13 +10,18 @@ Capabilities:
 - Docker container deployment and lifecycle management
 - Firewall automation (auto-open ports for deployments)
 - Health monitoring with self-healing actions
+- Persistent state engine (SQLite — survives context loss)
+- Constitutional recovery chain (rebuild awareness from scratch)
 - Full audit trail of all operations
 
 Usage:
     mc = MissionControl()
-    status = mc.status()          # Full system overview
+    mc.status()                        # Full system overview
     mc.deploy("redis", REDIS_COMPOSE)  # Deploy a service
-    mc.heal()                     # Auto-fix detected issues
+    mc.heal()                          # Auto-fix detected issues
+    mc.log_event("ira", "deploy", "redis")  # Record to persistent ledger
+    mc.get_context("ira")              # Bootstrap context for Ira
+    mc.get_recovery_chain("tess")      # Tess's reading list
 """
 
 import logging
@@ -26,6 +31,8 @@ from enum import Enum
 from typing import Optional, Dict, Any, List
 
 from .hostinger import HostingerVPSClient, VMInfo, ActionResult
+from .state import StateEngine
+from .context_chain import ContextChain
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +124,12 @@ class MissionControl:
     Ira's command center for managing the Hostinger VPS.
 
     All operations go through the Hostinger API — no SSH needed.
-    Maintains an audit log and supports automated healing.
+    Maintains a persistent state engine and supports automated healing.
+
+    Three layers:
+    1. Hostinger API client — talks to the VPS
+    2. State engine — persistent SQLite ledger (events, agents, progress)
+    3. Context chain — constitutional recovery docs for rebuilding awareness
     """
 
     def __init__(
@@ -125,6 +137,8 @@ class MissionControl:
         api_token: str = None,
         vm_id: int = None,
         auto_discover: bool = True,
+        db_path: str = None,
+        project_root: str = None,
     ):
         """
         Initialize Mission Control.
@@ -134,18 +148,27 @@ class MissionControl:
             vm_id: Target VM ID. If None and auto_discover=True,
                    uses the first VM found on the account.
             auto_discover: Auto-detect VM ID if not provided.
+            db_path: Path for the state SQLite database.
+            project_root: Root path for finding design docs.
         """
         self.client = HostingerVPSClient(api_token=api_token)
         self.vm_id = vm_id
         self._audit_log: List[AuditEntry] = []
         self._last_status: Optional[SystemStatus] = None
 
+        # Persistent state engine
+        self.state = StateEngine(db_path=db_path)
+
+        # Constitutional recovery chain
+        self.chain = ContextChain(project_root=project_root)
+
         if self.vm_id is None and auto_discover:
             self._discover_vm()
 
         logger.info(
             f"Mission Control online (vm_id={self.vm_id}, "
-            f"token={'ok' if self.client.api_token else 'missing'})"
+            f"token={'ok' if self.client.api_token else 'missing'}, "
+            f"state_db={self.state.db_path}, chain={len(self.chain)} docs)"
         )
 
     def _discover_vm(self):
@@ -159,12 +182,20 @@ class MissionControl:
 
     def _audit(self, action: str, target: str, success: bool,
                detail: str = "", triggered_by: str = "manual"):
-        """Record an action in the audit log."""
+        """Record an action in both in-memory log and persistent state."""
         entry = AuditEntry(
             action=action, target=target, success=success,
             detail=detail, triggered_by=triggered_by,
         )
         self._audit_log.append(entry)
+
+        # Persist to state engine
+        self.state.log(
+            agent="ira", category="action", action=action,
+            target=target, success=success, detail=detail,
+            context={"triggered_by": triggered_by},
+        )
+
         level = logging.INFO if success else logging.WARNING
         logger.log(level, f"[AUDIT] {action} {target}: {'ok' if success else 'FAIL'} {detail}")
 
@@ -541,6 +572,110 @@ class MissionControl:
             "failures": failures,
             "actions_by_type": actions,
         }
+
+    # ── Persistent State (Ledger) ────────────────────────────────
+
+    def log_event(
+        self, agent: str, action: str, target: str = "",
+        success: bool = True, detail: str = "",
+        context: Dict[str, Any] = None, session_id: str = "",
+    ) -> int:
+        """
+        Record any event to the persistent ledger.
+        Used by all agents, not just Ira.
+        """
+        return self.state.log(
+            agent=agent, category="action", action=action,
+            target=target, success=success, detail=detail,
+            context=context, session_id=session_id,
+        )
+
+    def log_decision(
+        self, agent: str, title: str, context: str,
+        choice: str, alternatives: str = "", rationale: str = "",
+    ) -> int:
+        """Record a design/architectural decision."""
+        return self.state.record_decision(
+            agent=agent, title=title, context=context,
+            choice=choice, alternatives=alternatives,
+            rationale=rationale,
+        )
+
+    def log_model_usage(self, model: str, provider: str, **kwargs):
+        """Record a model invocation for diagnostics."""
+        self.state.log_model_usage(model=model, provider=provider, **kwargs)
+
+    def set_agent_status(self, agent: str, status: str, **kwargs):
+        """Update an agent's current status."""
+        self.state.set_agent_status(agent, status, **kwargs)
+
+    def get_all_agents(self) -> List[Dict[str, Any]]:
+        """Get state of all known agents."""
+        return self.state.get_all_agents()
+
+    def get_recent_events(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get the most recent events from the persistent ledger."""
+        return self.state.get_recent(limit=limit)
+
+    def get_diagnostics(self, hours: float = 24) -> Dict[str, Any]:
+        """Get model usage diagnostics for the last N hours."""
+        return self.state.get_diagnostics(hours=hours)
+
+    def get_progress(self, phase: str = None) -> List[Dict[str, Any]]:
+        """Get task progress, optionally filtered by phase."""
+        return self.state.get_progress(phase=phase)
+
+    def get_progress_summary(self) -> Dict[str, Any]:
+        """Get a compact progress summary across all phases."""
+        return self.state.get_progress_summary()
+
+    def add_task(self, phase: str, task: str, owner: str = "") -> int:
+        """Add a task to the progress tracker."""
+        return self.state.add_task(phase=phase, task=task, owner=owner)
+
+    def update_task(self, task_id: int, status: str, detail: str = ""):
+        """Update a task's status."""
+        self.state.update_task(task_id, status, detail)
+
+    # ── Context Recovery ─────────────────────────────────────────
+
+    def get_context(self, agent: str) -> Dict[str, Any]:
+        """
+        Generate a full context primer for an agent.
+        Combines persistent state (recent events, progress, decisions)
+        with the constitutional chain (doc summaries).
+        """
+        # State-based context
+        state_context = self.state.get_context_for_agent(agent)
+
+        # Constitutional bootstrap
+        bootstrap = self.chain.get_bootstrap(agent)
+
+        return {
+            "agent": agent,
+            "state": state_context.get("state"),
+            "recent_events": state_context.get("own_recent_events", []),
+            "system_events": state_context.get("system_recent_events", []),
+            "active_tasks": state_context.get("active_tasks", []),
+            "recent_decisions": state_context.get("recent_decisions", []),
+            "constitutional_primer": bootstrap.get("primer", ""),
+            "reading_order": bootstrap.get("reading_order", []),
+            "first_doc": bootstrap.get("first_doc"),
+        }
+
+    def get_recovery_chain(self, agent: str = None) -> List[Dict[str, Any]]:
+        """Get the ordered document reading list for context recovery."""
+        if agent:
+            return self.chain.get_recovery_sequence(agent)
+        return self.chain.get_full_chain()
+
+    def verify_chain(self) -> Dict[str, Any]:
+        """Verify all constitutional documents exist."""
+        return self.chain.verify_chain()
+
+    def get_state_stats(self) -> Dict[str, Any]:
+        """Get statistics from the persistent state engine."""
+        return self.state.get_stats()
 
     # ── Convenience ──────────────────────────────────────────────
 

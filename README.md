@@ -92,21 +92,29 @@ Marvin is a production-grade system that extends AI model rate limits by 2-3x th
 - [ ] Full integration tests
 - [ ] Production hardening
 
-## Quick Start
+## Quick Start (current repo state)
+
+This repo is in **Phase 1** and not yet packaged as an installable module.
 
 ```bash
-# Install
-pip install -r requirements.txt
+# Create venv (recommended)
+# If you get "ensurepip is not available":
+#   sudo apt install python3-venv   (or python3.13-venv)
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -U pip
+
+# Install deps
+pip install -r requirements-dev.txt
 
 # Run tests
-pytest tests/
+pytest -q
 
-# Start Marvin
-python -m marvin.main --config config/default.yaml
-
-# Check health
-curl http://localhost:8000/health
+# Smoke test cache layer
+python src/cache/cache.py
 ```
+
+See `RUNBOOK.md` for details.
 
 ## Key Principles
 

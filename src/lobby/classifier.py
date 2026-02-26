@@ -2,13 +2,15 @@
 """
 Lobby Router — Intent Classifier
 
-OpenAI for real work. Ollama (local) for cheap stuff.
-
-Routing logic:
+Routing cascade with rate limit awareness:
 1. Keywords — instant, no API call
 2. Ollama (local) — heartbeats, status, trivial, how-to
-3. OpenAI — code review, debugging, feature work, anything Ollama can't handle
-4. Hardcoded fallback — if everything fails
+3. OpenAI — code review, debugging, feature work
+4. Kimi 2.5 — backup when OpenAI is rate limited
+5. Hardcoded fallback — if everything fails
+
+Rate limiter tracks provider health from response headers.
+429 → mark RED → auto-divert to next provider → auto-recover after reset.
 """
 
 import json
@@ -18,6 +20,8 @@ import os
 from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
+
+from lobby.rate_limiter import get_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +45,8 @@ OLLAMA_INTENTS = {
     IntentType.UNKNOWN,
 }
 
-# Intents that need OpenAI quality
-OPENAI_INTENTS = {
+# Intents that need quality (OpenAI or Kimi)
+QUALITY_INTENTS = {
     IntentType.CODE_REVIEW,
     IntentType.DEBUGGING,
     IntentType.FEATURE_WORK,
@@ -54,7 +58,7 @@ class Classification:
     """Result of intent classification."""
     intent: str
     confidence: float
-    method: str  # "keyword", "ollama", "openai", "fallback"
+    method: str  # "keyword", "ollama", "openai", "kimi", "fallback"
     cacheable: bool
     ttl: int
     reason: str
@@ -62,15 +66,12 @@ class Classification:
 
 class LobbyClassifier:
     """
-    Message intent classifier.
-
-    Ollama handles cheap/fast classification locally.
-    OpenAI handles complex work that needs quality.
+    Message intent classifier with rate-limit-aware provider cascade.
 
     Flow:
     1. Keyword match (free, instant)
     2. Ollama classify (free, local, fast)
-    3. If intent needs OpenAI quality -> re-classify with OpenAI
+    3. If complex intent → OpenAI (if healthy) → Kimi 2.5 (backup)
     4. Hardcoded fallback if all else fails
     """
 
@@ -80,6 +81,8 @@ class LobbyClassifier:
         openai_model: str = "gpt-4o-mini",
         ollama_url: str = None,
         ollama_model: str = None,
+        kimi_api_key: str = None,
+        kimi_model: str = None,
     ):
         # OpenAI config
         self.openai_api_key = openai_api_key or os.environ.get("OPENAI_API_KEY")
@@ -94,6 +97,18 @@ class LobbyClassifier:
             "OLLAMA_MODEL", "llama3.2"
         )
         self.ollama_available = None  # checked on first use
+
+        # Kimi 2.5 config (backup for OpenAI)
+        self.kimi_api_key = kimi_api_key or os.environ.get("KIMI_API_KEY")
+        self.kimi_model = kimi_model or os.environ.get(
+            "KIMI_MODEL", "moonshot-v1-auto"
+        )
+        self.kimi_url = os.environ.get(
+            "KIMI_API_URL", "https://api.moonshot.cn/v1/chat/completions"
+        )
+
+        # Rate limit tracker (singleton)
+        self.tracker = get_tracker()
 
         # Intent configuration
         self.intents = {
@@ -154,11 +169,11 @@ class LobbyClassifier:
 
     def classify(self, message: str) -> Classification:
         """
-        Classify a message. Ollama first, OpenAI only when needed.
+        Classify a message with rate-limit-aware provider cascade.
 
         1. Keywords (free)
         2. Ollama (free, local)
-        3. OpenAI (only for complex intents or if Ollama is down)
+        3. OpenAI if healthy, else Kimi 2.5
         4. Fallback (hardcoded)
         """
         # Phase 1: Keywords
@@ -170,21 +185,46 @@ class LobbyClassifier:
         ollama_result = self._classify_by_ollama(message)
         if ollama_result:
             intent = IntentType(ollama_result.intent)
-            # If Ollama says it's complex work, confirm with OpenAI
-            if intent in OPENAI_INTENTS:
-                openai_result = self._classify_by_openai(message)
-                if openai_result:
-                    return openai_result
+            # If Ollama says it's complex work, escalate to quality provider
+            if intent in QUALITY_INTENTS:
+                quality_result = self._classify_by_quality_provider(message)
+                if quality_result:
+                    return quality_result
             # Ollama's answer is good enough for simple stuff
             return ollama_result
 
-        # Phase 3: Ollama unavailable — use OpenAI
-        openai_result = self._classify_by_openai(message)
-        if openai_result:
-            return openai_result
+        # Phase 3: Ollama unavailable — use quality provider cascade
+        quality_result = self._classify_by_quality_provider(message)
+        if quality_result:
+            return quality_result
 
         # Phase 4: Everything failed
         return self._fallback_classification(message)
+
+    def _classify_by_quality_provider(self, message: str) -> Optional[Classification]:
+        """Try OpenAI first. If rate limited, fall back to Kimi 2.5."""
+        # Check OpenAI health before calling
+        if self.tracker.is_available("openai", self.openai_model):
+            result = self._classify_by_openai(message)
+            if result:
+                return result
+        else:
+            wait = self.tracker.seconds_until_available("openai", self.openai_model)
+            logger.info(
+                "OpenAI rate limited, skipping (resets in %ds). Trying Kimi.",
+                wait,
+            )
+
+        # OpenAI failed or rate limited → try Kimi 2.5
+        if self.tracker.is_available("moonshot", self.kimi_model):
+            result = self._classify_by_kimi(message)
+            if result:
+                return result
+        else:
+            wait = self.tracker.seconds_until_available("moonshot", self.kimi_model)
+            logger.info("Kimi also rate limited (resets in %ds)", wait)
+
+        return None
 
     def _classify_by_keywords(self, message: str) -> Optional[Classification]:
         """Keyword matching. Free, instant."""
@@ -270,63 +310,132 @@ class LobbyClassifier:
             logger.error("Ollama classification error: %s", e)
             return None
 
-    def _classify_by_openai(self, message: str) -> Optional[Classification]:
-        """Classify using OpenAI. Only for complex work or Ollama fallback."""
-        if not self.openai_api_key:
-            logger.warning("No OpenAI API key, skipping")
-            return None
-
+    def _call_openai_compatible(
+        self, url: str, api_key: str, model: str, message: str,
+        provider: str, timeout: int = 15,
+    ) -> Optional[requests.Response]:
+        """Shared OpenAI-compatible API call with rate limit tracking."""
         prompt = self._classification_prompt(message)
 
         try:
             response = requests.post(
-                self.openai_url,
+                url,
                 headers={
-                    "Authorization": f"Bearer {self.openai_api_key}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 json={
-                    "model": self.openai_model,
+                    "model": model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 20,
                     "temperature": 0.1,
                 },
-                timeout=15,
+                timeout=timeout,
             )
 
-            if response.status_code != 200:
-                logger.warning("OpenAI API error: %s", response.status_code)
+            # Track rate limits from response headers
+            if response.status_code == 200:
+                self.tracker.update(provider, model, dict(response.headers))
+                return response
+
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("retry-after", 60))
+                self.tracker.update_on_429(provider, model, retry_after)
+                logger.warning(
+                    "%s 429 rate limited — RED for %ds", provider, retry_after
+                )
                 return None
 
+            # Other errors — update headers if present, return None
+            if any(
+                k.startswith("x-ratelimit") or k.startswith("anthropic-ratelimit")
+                for k in response.headers
+            ):
+                self.tracker.update(provider, model, dict(response.headers))
+
+            logger.warning("%s API error: %s", provider, response.status_code)
+            return None
+
+        except requests.Timeout:
+            logger.warning("%s timeout", provider)
+            return None
+        except Exception as e:
+            logger.error("%s classification error: %s", provider, e)
+            return None
+
+    def _parse_classification_response(
+        self, response: requests.Response, provider: str, model: str,
+    ) -> Optional[Classification]:
+        """Parse a classification response from any OpenAI-compatible API."""
+        try:
             data = response.json()
             intent_str = data["choices"][0]["message"]["content"].strip().lower()
 
             valid_intents = [i.value for i in IntentType]
             if intent_str not in valid_intents:
-                logger.warning("Invalid intent from OpenAI: %s", intent_str)
+                logger.warning("Invalid intent from %s: %s", provider, intent_str)
                 return None
 
             intent = IntentType(intent_str)
             config = self.intents[intent]
 
+            confidence_map = {"openai": 0.90, "moonshot": 0.85}
+
             return Classification(
                 intent=intent.value,
-                confidence=0.90,
-                method="openai",
+                confidence=confidence_map.get(provider, 0.85),
+                method="openai" if provider == "openai" else "kimi",
                 cacheable=config["cacheable"],
                 ttl=config["ttl"],
-                reason=f"OpenAI {self.openai_model}",
+                reason=f"{provider} {model}",
             )
-
-        except requests.Timeout:
-            logger.warning("OpenAI timeout")
-            return None
         except Exception as e:
-            logger.error("OpenAI classification error: %s", e)
+            logger.error("Failed to parse %s response: %s", provider, e)
             return None
+
+    def _classify_by_openai(self, message: str) -> Optional[Classification]:
+        """Classify using OpenAI. Tracks rate limits."""
+        if not self.openai_api_key:
+            logger.warning("No OpenAI API key, skipping")
+            return None
+
+        response = self._call_openai_compatible(
+            url=self.openai_url,
+            api_key=self.openai_api_key,
+            model=self.openai_model,
+            message=message,
+            provider="openai",
+        )
+        if not response:
+            return None
+
+        return self._parse_classification_response(
+            response, "openai", self.openai_model
+        )
+
+    def _classify_by_kimi(self, message: str) -> Optional[Classification]:
+        """Classify using Kimi 2.5. Backup when OpenAI is rate limited."""
+        if not self.kimi_api_key:
+            logger.warning("No Kimi API key, skipping")
+            return None
+
+        response = self._call_openai_compatible(
+            url=self.kimi_url,
+            api_key=self.kimi_api_key,
+            model=self.kimi_model,
+            message=message,
+            provider="moonshot",
+            timeout=20,
+        )
+        if not response:
+            return None
+
+        return self._parse_classification_response(
+            response, "moonshot", self.kimi_model
+        )
 
     def _classification_prompt(self, message: str) -> str:
-        """Shared prompt for both Ollama and OpenAI."""
+        """Shared prompt for all providers."""
         return f"""You are a message classifier. Classify this message into ONE category ONLY.
 
 Categories and examples:
@@ -343,7 +452,7 @@ Message: "{message}"
 Respond with ONLY the category name in lowercase (status_check, how_to, etc), no explanation."""
 
     def _fallback_classification(self, message: str) -> Classification:
-        """Hardcoded fallback when both Ollama and OpenAI fail."""
+        """Hardcoded fallback when all providers fail."""
         logger.warning("Falling back to hardcoded classification")
 
         msg_lower = message.lower()
@@ -378,14 +487,24 @@ Respond with ONLY the category name in lowercase (status_check, how_to, etc), no
         )
 
     def get_stats(self) -> dict:
-        """Get classifier statistics."""
+        """Get classifier + rate limit statistics."""
+        rate_health = self.tracker.get_all_health()
         return {
             "openai_model": self.openai_model,
             "openai_key_configured": bool(self.openai_api_key),
+            "openai_health": rate_health.get(
+                self.tracker._key("openai", self.openai_model), "unknown"
+            ),
+            "kimi_model": self.kimi_model,
+            "kimi_key_configured": bool(self.kimi_api_key),
+            "kimi_health": rate_health.get(
+                self.tracker._key("moonshot", self.kimi_model), "unknown"
+            ),
             "ollama_url": self.ollama_url,
             "ollama_model": self.ollama_model,
             "ollama_available": self.ollama_available,
             "intents_available": len(self.intents),
+            "rate_limits": rate_health,
         }
 
 

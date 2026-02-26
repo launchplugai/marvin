@@ -122,6 +122,8 @@ class TestLobbyClassifier:
         assert "openai_model" in stats
         assert "ollama_url" in stats
         assert "ollama_model" in stats
+        assert "kimi_model" in stats
+        assert "rate_limits" in stats
         assert "intents_available" in stats
         assert stats["intents_available"] == len(IntentType)
 

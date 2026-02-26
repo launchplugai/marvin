@@ -50,7 +50,7 @@ This schema powers deterministic tests, dashboards, and cost guards.
   - Ollama down → OpenAI handles only escalation-trigger traffic; everything else goes keyword/fallback.
   - OpenAI down → Ollama handles everything it can, fallback for the rest.
   - Both down → fallback, so there is never an outage.
-- **Brownout mode:** if daily OpenAI spend crosses threshold or rate limits spike, lock OpenAI behind escalation triggers only, even if requests “feel” important.
+- **Brownout mode:** if daily OpenAI spend crosses threshold or rate limits spike, lock OpenAI behind escalation triggers only, even if requests “feel” important. *Priority overrides* (explicit `priority: high` metadata) can bypass brownout for production fires.
 - **Circuit breakers:**
   - Trip Ollama after 3 consecutive failures → skip for 60s.
   - Trip OpenAI after 2 failures/rate-limit errors → skip for 30s except for priority intents (code_debug, security).

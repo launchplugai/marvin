@@ -1,0 +1,54 @@
+- name: keyword-status
+  input: "status"
+  mode: normal
+  health:
+    ollama_ok: true
+    openai_ok: true
+  expected_layer: keyword
+  expected_intent: status
+  reason: "exact keyword command"
+
+- name: ollama-trivial
+  input: "what's the plan today?"
+  mode: normal
+  health:
+    ollama_ok: true
+    openai_ok: true
+  expected_layer: ollama
+  expected_intent: trivial
+  reason: "no escalation triggers"
+
+- name: openai-code
+  input: |
+    ```python
+    def broken():
+        print('hi')
+    ```
+    getting Traceback
+  mode: normal
+  health:
+    ollama_ok: true
+    openai_ok: true
+  expected_layer: openai
+  expected_intent: code_debug
+  reason: "code block triggers escalation"
+
+- name: brownout-noncritical
+  input: "Can you recap the roadmap?"
+  mode: brownout
+  health:
+    ollama_ok: true
+    openai_ok: true
+  expected_layer: ollama
+  expected_intent: unknown
+  reason: "brownout keeps request off OpenAI"
+
+- name: fallback-total-outage
+  input: "hello?"
+  mode: normal
+  health:
+    ollama_ok: false
+    openai_ok: false
+  expected_layer: fallback
+  expected_intent: trivial
+  reason: "no models available"

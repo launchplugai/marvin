@@ -37,7 +37,7 @@ Unknown intents stay on Ollama unless they trip escalation triggers.
 
 ## Brownout + Circuit-Breaker Signals
 Implementers MUST check:
-- **Brownout mode:** activated when OpenAI spend exceeds the daily cap or rate-limit failures spike. In brownout, only escalation-trigger requests may hit OpenAI; everything else is forced to keyword/Ollama/fallback.
+- **Brownout mode:** activated when OpenAI spend exceeds the daily cap or rate-limit failures spike. In brownout, only escalation-trigger requests may hit OpenAI unless the request carries an explicit `priority: high` flag.
 - **Circuit breakers:**
   - Ollama: trip after 3 consecutive failures; skip layer for 60s before retrying.
   - OpenAI: trip after 2 consecutive failures or rate-limit errors; skip for 30s, except allow priority intents (`code_debug`, `security`) to attempt once per cooldown.

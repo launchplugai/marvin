@@ -72,6 +72,9 @@ class MarvinGateway:
         self.ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
         self.ollama_model = os.environ.get("OLLAMA_MODEL", "llama3.2")
 
+        # Force a specific provider: "kimi", "openai", or "" (default cascade)
+        self.force_provider = os.environ.get("FORCE_PROVIDER", "").lower().strip()
+
         # Conversation history per user (simple in-memory, keyed by user_id)
         self.sessions = {}
 
@@ -146,10 +149,14 @@ class MarvinGateway:
     def get_status(self) -> str:
         """Health check for all providers."""
         stats = self.classifier.get_stats()
-        lines = ["Marvin Status:"]
+        forced = self.force_provider or "auto"
+        lines = [f"Marvin Status (cascade: {forced}):"]
         lines.append(f"  Ollama: {'UP' if stats.get('ollama_available') else 'DOWN'} ({self.ollama_model})")
-        lines.append(f"  OpenAI: {stats.get('openai_health', 'unknown')} ({self.openai_model})")
-        lines.append(f"  Kimi:   {stats.get('kimi_health', 'unknown')} ({self.kimi_model})")
+
+        kimi_tag = " [PRIMARY]" if not self.force_provider or self.force_provider == "kimi" else ""
+        openai_tag = " [PRIMARY]" if self.force_provider == "openai" else ""
+        lines.append(f"  Kimi:   {stats.get('kimi_health', 'unknown')} ({self.kimi_model}){kimi_tag}")
+        lines.append(f"  OpenAI: {stats.get('openai_health', 'unknown')} ({self.openai_model}){openai_tag}")
 
         rate_limits = stats.get("rate_limits", {})
         if rate_limits:
@@ -213,7 +220,13 @@ class MarvinGateway:
             return None
 
     def _generate_quality(self, messages: list) -> Optional[str]:
-        """Generate response using OpenAI → Kimi cascade."""
+        """Generate response using provider cascade.
+
+        FORCE_PROVIDER env var overrides the cascade:
+          "kimi"   → only try Kimi
+          "openai" → only try OpenAI
+          ""       → Kimi first, OpenAI fallback (default)
+        """
         system_msg = {
             "role": "system",
             "content": (
@@ -223,24 +236,39 @@ class MarvinGateway:
         }
         full_messages = [system_msg] + messages[-10:]
 
-        # Try OpenAI first
-        if self.openai_api_key and self.tracker.is_available("openai", self.openai_model):
-            result = self._call_chat(
-                self.openai_url, self.openai_api_key, self.openai_model,
-                full_messages, "openai",
-            )
-            if result:
-                return result
+        # Force single provider if set
+        if self.force_provider == "kimi":
+            return self._try_kimi(full_messages)
+        if self.force_provider == "openai":
+            return self._try_openai(full_messages)
 
-        # Try Kimi
+        # Default cascade: Kimi first (avoids OpenAI rate limits), OpenAI backup
+        result = self._try_kimi(full_messages)
+        if result:
+            return result
+
+        result = self._try_openai(full_messages)
+        if result:
+            return result
+
+        return None
+
+    def _try_kimi(self, messages: list) -> Optional[str]:
+        """Try Kimi provider."""
         if self.kimi_api_key and self.tracker.is_available("moonshot", self.kimi_model):
-            result = self._call_chat(
+            return self._call_chat(
                 self.kimi_url, self.kimi_api_key, self.kimi_model,
-                full_messages, "moonshot",
+                messages, "moonshot",
             )
-            if result:
-                return result
+        return None
 
+    def _try_openai(self, messages: list) -> Optional[str]:
+        """Try OpenAI provider."""
+        if self.openai_api_key and self.tracker.is_available("openai", self.openai_model):
+            return self._call_chat(
+                self.openai_url, self.openai_api_key, self.openai_model,
+                messages, "openai",
+            )
         return None
 
     def _call_chat(

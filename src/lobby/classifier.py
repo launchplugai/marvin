@@ -202,27 +202,31 @@ class LobbyClassifier:
         return self._fallback_classification(message)
 
     def _classify_by_quality_provider(self, message: str) -> Optional[Classification]:
-        """Try OpenAI first. If rate limited, fall back to Kimi 2.5."""
-        # Check OpenAI health before calling
-        if self.tracker.is_available("openai", self.openai_model):
-            result = self._classify_by_openai(message)
-            if result:
-                return result
-        else:
-            wait = self.tracker.seconds_until_available("openai", self.openai_model)
-            logger.info(
-                "OpenAI rate limited, skipping (resets in %ds). Trying Kimi.",
-                wait,
-            )
+        """Try Kimi first. If rate limited, fall back to OpenAI.
 
-        # OpenAI failed or rate limited → try Kimi 2.5
+        Reversed from original cascade — Kimi is now primary to avoid
+        OpenAI's persistent rate limits on free/low-tier keys.
+        """
+        # Try Kimi first (primary)
         if self.tracker.is_available("moonshot", self.kimi_model):
             result = self._classify_by_kimi(message)
             if result:
                 return result
         else:
             wait = self.tracker.seconds_until_available("moonshot", self.kimi_model)
-            logger.info("Kimi also rate limited (resets in %ds)", wait)
+            logger.info(
+                "Kimi rate limited, skipping (resets in %ds). Trying OpenAI.",
+                wait,
+            )
+
+        # Kimi failed or rate limited → try OpenAI as backup
+        if self.tracker.is_available("openai", self.openai_model):
+            result = self._classify_by_openai(message)
+            if result:
+                return result
+        else:
+            wait = self.tracker.seconds_until_available("openai", self.openai_model)
+            logger.info("OpenAI also rate limited (resets in %ds)", wait)
 
         return None
 

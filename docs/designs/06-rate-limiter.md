@@ -3,6 +3,8 @@
 
 **Purpose:** The nervous system of the entire architecture. Reads rate limit headers from every API response, maintains a health dashboard, triggers buffer switches automatically. Zero extra API calls — it's purely reactive.
 
+**Status: IMPLEMENTED** — `src/lobby/rate_limiter.py` (19 tests passing)
+
 ---
 
 ## THE PRINCIPLE
@@ -13,27 +15,51 @@ Every API response includes rate limit information in HTTP headers. We already g
 
 ---
 
+## IMPLEMENTATION
+
+### File: `src/lobby/rate_limiter.py`
+
+The full implementation lives in a single module with:
+
+- `_parse_reset_duration(raw)` — Parses reset times from all formats (Groq `"2m59.56s"`, ISO datetime, plain seconds)
+- `RateLimitTracker` — Singleton class, in-memory + SQLite persistence
+- `get_tracker()` — Module-level singleton accessor
+
+### Integration: `src/lobby/classifier.py`
+
+The classifier calls the tracker on every API response:
+
+```python
+# On 200 OK — update health from response headers
+self.tracker.update(provider, model, dict(response.headers))
+
+# On 429 — mark RED immediately, record retry-after
+self.tracker.update_on_429(provider, model, retry_after)
+```
+
+Before calling any provider, the classifier checks health:
+
+```python
+if self.tracker.is_available("openai", self.openai_model):
+    result = self._classify_by_openai(message)
+else:
+    # OpenAI rate limited, skip to Kimi 2.5
+    result = self._classify_by_kimi(message)
+```
+
+---
+
 ## PROVIDER HEADER FORMATS
 
-### Groq Headers
+### Groq / OpenAI / Moonshot Headers
 ```
-x-ratelimit-limit-requests: 14400          # RPD ceiling
-x-ratelimit-remaining-requests: 14370      # RPD remaining
-x-ratelimit-reset-requests: 2m59.56s       # Time until RPD reset
-x-ratelimit-limit-tokens: 6000             # TPM ceiling
-x-ratelimit-remaining-tokens: 5997         # TPM remaining
-x-ratelimit-reset-tokens: 7.66s            # Time until TPM reset
-retry-after: 2                              # Only on 429 responses
-```
-
-### Kimi / Moonshot Headers
-```
-x-ratelimit-limit-requests: <rpm_limit>
-x-ratelimit-remaining-requests: <remaining>
-x-ratelimit-reset-requests: <reset_time>
-x-ratelimit-limit-tokens: <tpm_limit>
-x-ratelimit-remaining-tokens: <remaining>
-x-ratelimit-reset-tokens: <reset_time>
+x-ratelimit-limit-requests: 14400
+x-ratelimit-remaining-requests: 14370
+x-ratelimit-reset-requests: 2m59.56s
+x-ratelimit-limit-tokens: 6000
+x-ratelimit-remaining-tokens: 5997
+x-ratelimit-reset-tokens: 7.66s
+retry-after: 2                              # Only on 429
 ```
 
 ### Anthropic (Haiku/Claude) Headers
@@ -47,356 +73,140 @@ anthropic-ratelimit-tokens-reset: <iso_datetime>
 retry-after: <seconds>                      # Only on 429
 ```
 
-### OpenAI Headers
-```
-x-ratelimit-limit-requests: <rpm>
-x-ratelimit-remaining-requests: <remaining>
-x-ratelimit-reset-requests: <duration>
-x-ratelimit-limit-tokens: <tpm>
-x-ratelimit-remaining-tokens: <remaining>
-x-ratelimit-reset-tokens: <duration>
-```
+All four provider formats are handled by `tracker.parse_headers(headers, provider)`.
 
 ---
 
-## HEADER PARSER
-
-```python
-from datetime import datetime, timedelta
-import re
-
-def parse_rate_limit_headers(headers: dict, provider: str) -> dict:
-    """
-    Normalize rate limit headers from any provider into standard format.
-    Called on EVERY API response.
-    """
-    
-    if provider in ("groq", "openai", "moonshot"):
-        remaining_requests = int(headers.get("x-ratelimit-remaining-requests", -1))
-        limit_requests = int(headers.get("x-ratelimit-limit-requests", -1))
-        remaining_tokens = int(headers.get("x-ratelimit-remaining-tokens", -1))
-        limit_tokens = int(headers.get("x-ratelimit-limit-tokens", -1))
-        reset_requests = parse_reset_time(headers.get("x-ratelimit-reset-requests", ""))
-        reset_tokens = parse_reset_time(headers.get("x-ratelimit-reset-tokens", ""))
-        
-    elif provider == "anthropic":
-        remaining_requests = int(headers.get("anthropic-ratelimit-requests-remaining", -1))
-        limit_requests = int(headers.get("anthropic-ratelimit-requests-limit", -1))
-        remaining_tokens = int(headers.get("anthropic-ratelimit-tokens-remaining", -1))
-        limit_tokens = int(headers.get("anthropic-ratelimit-tokens-limit", -1))
-        reset_requests = headers.get("anthropic-ratelimit-requests-reset", "")
-        reset_tokens = headers.get("anthropic-ratelimit-tokens-reset", "")
-    
-    else:
-        return {"health": "unknown"}
-    
-    # Calculate health based on BOTH requests and tokens remaining
-    request_pct = (remaining_requests / limit_requests * 100) if limit_requests > 0 else 100
-    token_pct = (remaining_tokens / limit_tokens * 100) if limit_tokens > 0 else 100
-    
-    # Health is determined by the LOWER of the two
-    lowest_pct = min(request_pct, token_pct)
-    
-    if lowest_pct > 20:
-        health = "green"
-    elif lowest_pct > 5:
-        health = "yellow"
-    else:
-        health = "red"
-    
-    return {
-        "remaining_requests": remaining_requests,
-        "limit_requests": limit_requests,
-        "remaining_tokens": remaining_tokens,
-        "limit_tokens": limit_tokens,
-        "request_pct": round(request_pct, 1),
-        "token_pct": round(token_pct, 1),
-        "reset_requests": reset_requests,
-        "reset_tokens": reset_tokens,
-        "health": health,
-        "bottleneck": "requests" if request_pct < token_pct else "tokens",
-        "updated_at": iso_now()
-    }
-
-
-def parse_reset_time(raw: str) -> str:
-    """Parse various reset time formats into ISO datetime"""
-    if not raw:
-        return ""
-    
-    # Already ISO format
-    if "T" in raw:
-        return raw
-    
-    # Groq format: "2m59.56s" or "7.66s"
-    total_seconds = 0
-    
-    m_match = re.search(r'(\d+)m', raw)
-    s_match = re.search(r'([\d.]+)s', raw)
-    
-    if m_match:
-        total_seconds += int(m_match.group(1)) * 60
-    if s_match:
-        total_seconds += float(s_match.group(1))
-    
-    if total_seconds > 0:
-        reset_time = datetime.utcnow() + timedelta(seconds=total_seconds)
-        return reset_time.isoformat() + "Z"
-    
-    return raw  # Return as-is if unparseable
-```
-
----
-
-## STATE STORAGE
-
-### In-Memory (Fast Access for Routing)
-
-```python
-class RateLimitTracker:
-    """
-    Singleton. Updated on every API response.
-    Read by routing layer on every request.
-    """
-    
-    def __init__(self):
-        self.providers = {}
-        self.db = get_sqlite_connection()
-    
-    def update(self, provider: str, model: str, headers: dict):
-        """Called after EVERY API response"""
-        parsed = parse_rate_limit_headers(headers, provider)
-        
-        key = self._provider_key(provider, model)
-        self.providers[key] = parsed
-        
-        # Also persist to SQLite for historical tracking
-        self.db.execute("""
-            INSERT INTO rate_limit_snapshots
-            (timestamp, provider, remaining_requests, remaining_tokens, resets_at, health)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            now(), key,
-            parsed["remaining_requests"],
-            parsed["remaining_tokens"],
-            parsed.get("reset_requests", ""),
-            parsed["health"]
-        ))
-    
-    def update_on_429(self, provider: str, model: str, retry_after: int):
-        """Called specifically when we get a 429 response"""
-        key = self._provider_key(provider, model)
-        self.providers[key] = {
-            "remaining_requests": 0,
-            "remaining_tokens": 0,
-            "health": "red",
-            "bottleneck": "rate_limited",
-            "retry_after": retry_after,
-            "reset_at": (datetime.utcnow() + timedelta(seconds=retry_after)).isoformat() + "Z",
-            "updated_at": iso_now()
-        }
-    
-    def get_health(self, provider_key: str) -> str:
-        """Get current health for a provider. Used by routing layer."""
-        info = self.providers.get(provider_key, {})
-        
-        # Check if a previous "red" has expired (reset time passed)
-        if info.get("health") == "red" and info.get("reset_at"):
-            if datetime.utcnow().isoformat() > info["reset_at"]:
-                # Reset time passed — optimistically set to yellow
-                info["health"] = "yellow"
-                self.providers[provider_key] = info
-        
-        return info.get("health", "green")  # default green if no data yet
-    
-    def get_all_health(self) -> dict:
-        """Snapshot of all providers. Attached to every envelope."""
-        return {
-            key: info.get("health", "green")
-            for key, info in self.providers.items()
-        }
-    
-    def get_best_available(self, preferred: str, fallbacks: list) -> str:
-        """Find the healthiest provider from preferred + fallback list"""
-        # Try preferred first
-        if self.get_health(preferred) in ("green", "yellow"):
-            return preferred
-        
-        # Try fallbacks in order
-        for fb in fallbacks:
-            if self.get_health(fb) in ("green", "yellow"):
-                return fb
-        
-        # Everything stressed — return preferred anyway (may get 429, will retry)
-        return preferred
-    
-    def _provider_key(self, provider: str, model: str) -> str:
-        """Normalize provider key"""
-        key_map = {
-            ("moonshot", "kimi-2.5"): "kimi_2_5",
-            ("groq", "moonshotai/kimi-k2-instruct-0905"): "groq_kimi_k2_0905",
-            ("groq", "openai/gpt-oss-120b"): "groq_gpt_oss_120b",
-            ("groq", "qwen/qwen3-32b"): "groq_qwen3_32b",
-            ("groq", "llama-3.1-8b-instant"): "groq_llama_8b",
-            ("groq", "llama-3.3-70b-versatile"): "groq_llama_70b",
-            ("anthropic", "haiku"): "haiku",
-            ("openai", "gpt-4o"): "openai_gpt4o",
-            ("anthropic", "opus"): "claude_opus",
-        }
-        return key_map.get((provider, model), f"{provider}_{model}")
-
-
-# Singleton instance
-tracker = RateLimitTracker()
-```
-
----
-
-## INTEGRATION POINTS
-
-### 1. After Every API Call
-
-```python
-def call_model(provider, model, messages, **kwargs):
-    """Wrapper around all API calls. Parses rate limits on every response."""
-    
-    response = make_api_request(provider, model, messages, **kwargs)
-    
-    # ALWAYS update rate limits from response headers
-    if response.status_code == 200:
-        tracker.update(provider, model, dict(response.headers))
-    elif response.status_code == 429:
-        retry_after = int(response.headers.get("retry-after", 60))
-        tracker.update_on_429(provider, model, retry_after)
-        raise RateLimitError(provider, model, retry_after)
-    
-    return response
-```
-
-### 2. Envelope Rate Limit Snapshot
-
-```python
-def attach_rate_limits_to_envelope(envelope: dict) -> dict:
-    """Called before routing. Gives receptionist current health view."""
-    envelope["rate_limit_state"] = tracker.get_all_health()
-    return envelope
-```
-
-### 3. Routing Decision
-
-```python
-def select_model_for_department(department: str) -> str:
-    """Used by receptionist to pick primary or buffer"""
-    primary = "kimi_2_5"
-    buffer = DEPARTMENT_BUFFERS[department]
-    
-    return tracker.get_best_available(
-        preferred=primary,
-        fallbacks=[buffer, "groq_llama_70b", "openai_gpt4o", "claude_opus"]
-    )
-```
-
----
-
-## HEALTH THRESHOLDS
+## HEALTH STATES
 
 ```
 GREEN  (>20% remaining)
 ├── Use normally
 ├── No special behavior
-└── This is the happy path
+└── Happy path
 
 YELLOW (5-20% remaining)
-├── Still usable — don't panic
-├── Set fallback on every routed request
-├── Log warning: "Kimi approaching limit"
-├── Start prioritizing: high/critical requests stay on primary
-│   low/normal requests divert to buffer preemptively
-└── This extends primary's remaining capacity for important work
+├── Still usable
+├── Low/normal priority → divert to buffer
+├── High/critical priority → stays on primary
+└── Extends primary's capacity for important work
 
 RED    (<5% remaining OR 429 received)
-├── Do NOT send new requests to this provider
-├── All traffic diverts to buffer immediately
-├── Log alert: "Kimi rate limited — buffer active"
-├── Check reset_at — set timer to retry after reset
-└── Optimistically upgrade to yellow after reset time passes
+├── Do NOT send new requests
+├── ALL traffic diverts to buffer immediately
+├── Auto-recovers to YELLOW after reset time passes
+└── No manual intervention needed
 ```
 
-### Priority-Based Diversion (Yellow State)
-
-When primary is yellow, don't divert everything. Divert strategically:
+### Health Calculation
 
 ```python
-def should_divert_to_buffer(priority: str, provider_health: str) -> bool:
-    """In yellow state, only divert low-priority requests"""
-    if provider_health == "green":
-        return False  # Never divert on green
-    
-    if provider_health == "red":
-        return True  # Always divert on red
-    
-    # Yellow: divert low priority, keep high/critical on primary
-    if provider_health == "yellow":
-        return priority in ("low", "normal")
-    
-    return False
+request_pct = remaining_requests / limit_requests * 100
+token_pct = remaining_tokens / limit_tokens * 100
+lowest = min(request_pct, token_pct)  # bottleneck decides
+
+if lowest > 20:  health = "green"
+elif lowest > 5: health = "yellow"
+else:            health = "red"
 ```
 
-This means: when Kimi is getting warm, trivial questions and routine tasks go to Groq buffer, but critical debugging and high-priority fixes stay on Kimi. The expensive model is reserved for expensive problems.
+Health is determined by the LOWER of requests and tokens. If you have 90% tokens remaining but 3% requests remaining, you're RED.
 
 ---
 
-## 429 HANDLING — THE CIRCUIT BREAKER
+## 429 CIRCUIT BREAKER
+
+When a 429 hits, the tracker:
+
+1. **Marks the provider RED immediately** — `update_on_429(provider, model, retry_after)`
+2. **Records the reset time** — `reset_at = now + retry_after`
+3. **All subsequent requests skip this provider** — `is_available()` returns `False`
+4. **Auto-recovers** — After `reset_at` passes, `get_health()` upgrades RED → YELLOW
+
+The classifier's cascade handles the diversion:
+
+```
+OpenAI 429
+  → tracker marks OpenAI RED
+  → next classify() call checks is_available("openai") → False
+  → skips to Kimi 2.5
+  → Kimi also 429? → marks Kimi RED → falls to hardcoded fallback
+  → After OpenAI reset time passes → auto YELLOW → next call tries OpenAI again
+```
+
+No manual intervention. No restart needed. No 8-hour stuck loops.
+
+---
+
+## PRIORITY-BASED DIVERSION (YELLOW STATE)
 
 ```python
-def handle_rate_limit_error(provider, model, retry_after, envelope):
-    """
-    Called when a 429 is received.
-    Does NOT retry on the same provider.
-    Immediately routes to buffer.
-    """
-    # 1. Mark provider as red
-    tracker.update_on_429(provider, model, retry_after)
-    
-    # 2. Log the event
-    log_event("rate_limit_hit", {
-        "provider": provider,
-        "model": model,
-        "retry_after": retry_after,
-        "envelope_id": envelope["envelope_id"],
-        "intent": envelope["classification"]["intent"]
-    })
-    
-    # 3. Find buffer
-    department = envelope["routing"]["department"]
-    buffer = DEPARTMENT_BUFFERS.get(department, "groq_llama_70b")
-    buffer_health = tracker.get_health(buffer)
-    
-    if buffer_health != "red":
-        # 4a. Route to buffer with same envelope
-        envelope["execution_chain"].append({
-            "model": f"{provider}/{model}",
-            "action": "rate_limited_429",
-            "diverted_to": buffer,
-            "retry_after": retry_after,
-            "timestamp": iso_now()
-        })
-        return call_model_with_envelope(buffer, envelope)
-    
-    # 4b. Buffer also red — cascade
-    for cascade in ["groq_llama_70b", "openai_gpt4o", "claude_opus"]:
-        if tracker.get_health(cascade) != "red":
-            envelope["execution_chain"].append({
-                "model": f"{provider}/{model}",
-                "action": "rate_limited_429_cascade",
-                "diverted_to": cascade,
-                "timestamp": iso_now()
-            })
-            return call_model_with_envelope(cascade, envelope)
-    
-    # 4c. Everything red — queue and wait
-    log_event("all_providers_exhausted", envelope["envelope_id"])
-    return queue_for_retry(envelope, min_wait=retry_after)
+tracker.should_divert("openai", "gpt-4o-mini", priority="low")     # True in YELLOW
+tracker.should_divert("openai", "gpt-4o-mini", priority="high")    # False in YELLOW
+tracker.should_divert("openai", "gpt-4o-mini", priority="low")     # True in RED
+tracker.should_divert("openai", "gpt-4o-mini", priority="high")    # True in RED
+```
+
+In YELLOW: cheap stuff diverts, important stuff stays on primary.
+In RED: everything diverts. No exceptions.
+
+---
+
+## PERSISTENCE
+
+Every health update is written to SQLite (`rate_limit_snapshots` table) for historical tracking:
+
+```sql
+CREATE TABLE rate_limit_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL,        -- green, yellow, red
+    tpm_remaining INTEGER,
+    tpm_limit INTEGER,
+    rpm_remaining INTEGER,
+    rpm_limit INTEGER,
+    tokens_remaining INTEGER,
+    tokens_limit INTEGER,
+    time_until_reset INTEGER,
+    metadata TEXT
+);
+```
+
+Database: `~/.openclaw/workspace/cache/responses.db` (shared with cache layer)
+
+Query historical snapshots:
+
+```python
+tracker.get_recent_snapshots()                       # last 20 across all providers
+tracker.get_recent_snapshots("openai_gpt4o_mini")    # last 20 for OpenAI
+```
+
+---
+
+## DIAGNOSTICS
+
+```python
+tracker.get_stats()
+# Returns:
+{
+    "providers_tracked": 2,
+    "providers_red": 1,
+    "providers_yellow": 0,
+    "providers_green": 1,
+    "all_health": {
+        "openai_gpt4o_mini": "red",
+        "moonshot_moonshot-v1-auto": "green"
+    },
+    "openai_gpt4o_mini_resets_in": 45   # seconds until recovery
+}
+```
+
+```python
+tracker.seconds_until_available("openai", "gpt-4o-mini")  # 45
+tracker.is_available("openai", "gpt-4o-mini")              # False
+tracker.get_health("openai", "gpt-4o-mini")                # "red"
 ```
 
 ---
@@ -405,57 +215,61 @@ def handle_rate_limit_error(provider, model, retry_after, envelope):
 
 ```sql
 -- Rate limit events per provider (last 24h)
-SELECT provider, health, COUNT(*) as snapshots
+SELECT provider, status, COUNT(*) as snapshots
 FROM rate_limit_snapshots
 WHERE timestamp > strftime('%s', 'now') - 86400
-GROUP BY provider, health
-ORDER BY provider, health;
+GROUP BY provider, status
+ORDER BY provider, status;
 
 -- 429 events (when did we get rate limited?)
-SELECT provider, timestamp, 
+SELECT provider, timestamp,
        datetime(timestamp, 'unixepoch') as when_hit
 FROM rate_limit_snapshots
-WHERE remaining_requests = 0 OR health = 'red'
+WHERE rpm_remaining = 0 OR status = 'red'
 ORDER BY timestamp DESC
 LIMIT 20;
 
--- Buffer activation frequency
-SELECT provider, COUNT(*) as times_used_as_buffer
-FROM rate_limit_snapshots
-WHERE health != 'green'
-GROUP BY provider
-ORDER BY times_used_as_buffer DESC;
-
 -- Time spent in each state per provider
-SELECT 
+SELECT
     provider,
-    health,
+    status,
     COUNT(*) * 1.0 / (SELECT COUNT(*) FROM rate_limit_snapshots WHERE provider = r.provider) * 100 as pct_time
 FROM rate_limit_snapshots r
 WHERE timestamp > strftime('%s', 'now') - 86400
-GROUP BY provider, health;
+GROUP BY provider, status;
 ```
 
 ---
 
-## TESTING CHECKLIST
+## TESTING
 
-- [ ] Parse Groq rate limit headers correctly (format: "2m59.56s")
-- [ ] Parse Anthropic rate limit headers correctly (format: ISO datetime)
-- [ ] Parse OpenAI rate limit headers correctly
-- [ ] Health calculation: 25% remaining = green ✓
-- [ ] Health calculation: 15% remaining = yellow ✓
-- [ ] Health calculation: 3% remaining = red ✓
-- [ ] Health uses LOWER of request% and token% (not just one)
-- [ ] 429 response → immediate red status
-- [ ] Red status + reset time passed → auto-upgrade to yellow
-- [ ] Yellow state: low/normal priority diverts, high/critical stays on primary
-- [ ] Red state: all traffic diverts to buffer
-- [ ] Buffer also red: cascade to next available provider
-- [ ] All providers red: queue for retry with min wait
-- [ ] Every API call updates tracker (verify with logging)
-- [ ] Envelope rate_limit_state reflects current snapshot
-- [ ] SQLite snapshots recording for historical analysis
-- [ ] Simulate: Kimi yellow → verify only low-priority diverts
-- [ ] Simulate: Kimi red → verify ALL traffic diverts
-- [ ] Simulate: Kimi red + Groq red → verify cascade to OpenAI
+**19 tests in `tests/unit/test_rate_limiter.py`**, all passing:
+
+- [x] Parse Groq reset duration (`"2m59.56s"` → 179 seconds)
+- [x] Parse plain seconds (`"60"` → 60)
+- [x] Handle empty/None input (safe default 60s)
+- [x] Default health is GREEN (no data = healthy)
+- [x] Green health from healthy headers (>20% remaining)
+- [x] Yellow health from low headers (5-20% remaining)
+- [x] Red health from very low headers (<5% remaining)
+- [x] 429 marks provider RED immediately
+- [x] Auto-recovery: RED → YELLOW after reset time passes
+- [x] `is_available()`: green/yellow = True, red = False
+- [x] `should_divert()`: never on green, low-priority on yellow, always on red
+- [x] `seconds_until_available()`: reports correct countdown
+- [x] `get_all_health()`: returns snapshot of all providers
+- [x] Anthropic header format parsed correctly
+- [x] SQLite persistence: snapshots written and queryable
+- [x] `get_stats()`: reflects tracked state
+
+---
+
+## WHAT'S NEXT
+
+The tracker is fully functional for the lobby classifier. To extend it to ALL API calls in the system (department heads, boss, emergency):
+
+1. Wire `tracker.update()` into every API response handler
+2. Wire `tracker.is_available()` into every routing decision
+3. Add the full cascade from ADR-003 (department buffers, emergency tier)
+
+Currently covers: OpenAI, Moonshot/Kimi, with support for Groq and Anthropic header parsing ready.

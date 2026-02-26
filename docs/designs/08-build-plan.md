@@ -52,37 +52,35 @@ DELIVERABLE: Cache can classify and store/retrieve by intent
 - [ ] Test: entry expires after TTL
 - [ ] Implement metrics logging (hit/miss/write/invalidate events)
 
-#### Day 3: Lobby Router (8B on Groq)
+#### Day 3: Lobby Router — DONE
 
 ```
 DELIVERABLE: Messages get classified into JSON
 ```
 
-- [ ] Create lobby-router config from Doc 3
-- [ ] Set up Groq API client (if not already)
-- [ ] Implement `lobby_classify(message) → envelope` from Doc 3
-- [ ] Implement `parse_lobby_response(raw) → Classification | None`
-- [ ] Implement `fallback_classification()` for parse failures
-- [ ] Wire: message → 8B classify → start envelope → check cache
-- [ ] Test with 30 real messages: verify JSON output, check accuracy
-- [ ] Test: malformed 8B output → fallback classification fires
-- [ ] Measure: tokens per classification call (target <900)
+- [x] Create lobby-router config from Doc 3 (updated: Ollama + OpenAI + Kimi cascade)
+- [x] Implement `LobbyClassifier.classify(message) → Classification`
+- [x] Implement keyword matching (free, instant, no API)
+- [x] Implement Ollama local classification (free, ~100-500ms)
+- [x] Implement OpenAI classification (paid, quality work)
+- [x] Implement Kimi 2.5 backup (paid, when OpenAI rate limited)
+- [x] Implement `_fallback_classification()` for when all providers fail
+- [x] Test: 7 unit tests passing (keywords, cacheability, fallback, stats)
 
-#### Day 4: Rate Limit Tracker
+#### Day 4: Rate Limit Tracker — DONE
 
 ```
 DELIVERABLE: Every API call updates health dashboard
 ```
 
-- [ ] Implement `parse_rate_limit_headers()` from Doc 6
-- [ ] Handle all four formats: Groq, Anthropic, OpenAI, Moonshot
-- [ ] Implement `RateLimitTracker` class (in-memory + SQLite)
-- [ ] Wire into API call wrapper: every response updates tracker
-- [ ] Handle 429 specifically: immediate red status
-- [ ] Implement `get_all_health()` for envelope attachment
-- [ ] Test: mock Groq headers → verify green/yellow/red calculation
-- [ ] Test: mock 429 → verify immediate red + retry_after tracking
-- [ ] Test: reset time passes → verify auto-upgrade to yellow
+- [x] Implement `parse_headers()` — all four formats: Groq, Anthropic, OpenAI, Moonshot
+- [x] Implement `_parse_reset_duration()` — Groq "2m59.56s", ISO datetime, plain seconds
+- [x] Implement `RateLimitTracker` class (in-memory + SQLite persistence)
+- [x] Wire into classifier: every API response updates tracker
+- [x] Handle 429: immediate RED, record retry_after, auto-recover after reset
+- [x] Implement `get_all_health()` for envelope/stats
+- [x] Implement `is_available()`, `should_divert()`, `seconds_until_available()`
+- [x] Test: 19 unit tests passing (green/yellow/red, 429, auto-recovery, persistence, diversion)
 
 #### Day 5: Integration + End-to-End Test
 

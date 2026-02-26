@@ -24,6 +24,18 @@
     "version": 1
   },
   {
+    "command": "router status",
+    "response": "[keyword/router-status] Lobby online, Ollama+OpenAI reachable as of {{timestamp}}.",
+    "allows_args": false,
+    "version": 1
+  },
+  {
+    "command": "budget",
+    "response": "[keyword/budget] Spend tracking stable; OpenAI budget guard armed as of {{timestamp}}.",
+    "allows_args": false,
+    "version": 1
+  },
+  {
     "command": "what can you do",
     "response": "[keyword/info] I classify workload layers and keep OpenAI spend lean ({{timestamp}}).",
     "allows_args": false,

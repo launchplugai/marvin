@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 Lobby Router — Intent Classifier
-Phase 1 Day 3
+Phase 1 Day 3 (Updated: OpenAI-first)
 
-Uses Groq Llama 8B to classify messages into intent types.
+Uses OpenAI gpt-4o-mini to classify messages into intent types.
 
-Fast, cheap, accurate enough for routing decisions.
+Fast, cheap, accurate. Single provider — no waterfall complexity.
 Fallback to keyword-based classification if LLM fails.
 """
 
@@ -44,23 +44,26 @@ class Classification:
 
 class LobbyClassifier:
     """
-    Message intent classifier using Groq 8B.
-    
+    Message intent classifier using OpenAI gpt-4o-mini.
+
     Design:
     1. Fast path: keyword matching (no API call)
-    2. Slow path: LLM classification (if no keyword match)
+    2. Slow path: LLM classification via OpenAI (if no keyword match)
     3. Fallback: hardcoded rules (if LLM fails)
     4. Result: JSON envelope with intent + metadata
+
+    OpenAI-first: single provider, no waterfall. Once solid,
+    additional models can be layered in.
     """
-    
-    def __init__(self, groq_api_key: str = None, model: str = "llama-3.1-8b-instant"):
-        """Initialize classifier with Groq API."""
-        if groq_api_key is None:
-            groq_api_key = os.environ.get("GROQ_API_KEY")
-        
-        self.api_key = groq_api_key
+
+    def __init__(self, api_key: str = None, model: str = "gpt-4o-mini"):
+        """Initialize classifier with OpenAI API."""
+        if api_key is None:
+            api_key = os.environ.get("OPENAI_API_KEY")
+
+        self.api_key = api_key
         self.model = model
-        self.groq_url = "https://api.groq.com/openai/v1/chat/completions"
+        self.api_url = "https://api.openai.com/v1/chat/completions"
         
         # Intent configuration
         self.intents = {
@@ -165,11 +168,11 @@ class LobbyClassifier:
         return None
     
     def _classify_by_llm(self, message: str) -> Optional[Classification]:
-        """Use Groq 8B for semantic classification."""
+        """Use OpenAI gpt-4o-mini for semantic classification."""
         if not self.api_key:
-            logger.warning("No Groq API key, skipping LLM classification")
+            logger.warning("No OpenAI API key, skipping LLM classification")
             return None
-        
+
         prompt = f"""You are a message classifier. Classify this message into ONE category ONLY.
 
 Categories and examples:
@@ -187,44 +190,47 @@ Respond with ONLY the category name in lowercase (status_check, how_to, etc), no
 
         try:
             response = requests.post(
-                self.groq_url,
-                headers={"Authorization": f"Bearer {self.api_key}"},
+                self.api_url,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
                 json={
                     "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 20,
-                    "temperature": 0.1,  # Low temp for consistency
+                    "temperature": 0.1,
                 },
-                timeout=10,
+                timeout=15,
             )
-            
+
             if response.status_code != 200:
-                logger.warning(f"Groq API error: {response.status_code}")
+                logger.warning(f"OpenAI API error: {response.status_code}")
                 return None
-            
+
             data = response.json()
             intent_str = data["choices"][0]["message"]["content"].strip().lower()
-            
+
             # Validate intent
             valid_intents = [i.value for i in IntentType]
             if intent_str not in valid_intents:
                 logger.warning(f"Invalid intent from LLM: {intent_str}")
                 return None
-            
+
             intent = IntentType(intent_str)
             config = self.intents[intent]
-            
+
             return Classification(
                 intent=intent.value,
-                confidence=0.85,  # LLM classification
+                confidence=0.90,  # gpt-4o-mini is more accurate than 8B
                 method="llm",
                 cacheable=config["cacheable"],
                 ttl=config["ttl"],
-                reason="Groq 8B semantic classification",
+                reason=f"OpenAI {self.model} semantic classification",
             )
-            
+
         except requests.Timeout:
-            logger.warning("Groq API timeout")
+            logger.warning("OpenAI API timeout")
             return None
         except Exception as e:
             logger.error(f"LLM classification error: {e}")
@@ -271,6 +277,7 @@ Respond with ONLY the category name in lowercase (status_check, how_to, etc), no
     def get_stats(self) -> dict:
         """Get classifier statistics."""
         return {
+            "provider": "openai",
             "model": self.model,
             "api_key_configured": bool(self.api_key),
             "intents_available": len(self.intents),

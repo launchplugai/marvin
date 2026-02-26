@@ -1,0 +1,50 @@
+[
+  {
+    "command": "status",
+    "response": "[keyword/status] Systems nominal as of {{timestamp}}.",
+    "allows_args": false,
+    "version": 1
+  },
+  {
+    "command": "health",
+    "response": "[keyword/health] All services healthy as of {{timestamp}}.",
+    "allows_args": false,
+    "version": 1
+  },
+  {
+    "command": "version",
+    "response": "[keyword/version] Marvin lobby build {{build_id}} ({{timestamp}}).",
+    "allows_args": false,
+    "version": 1
+  },
+  {
+    "command": "help",
+    "response": "[keyword/help] Commands: status, health, version, router status, budget, help.",
+    "allows_args": false,
+    "version": 1
+  },
+  {
+    "command": "router status",
+    "response": "[keyword/router-status] Lobby online, Ollama+OpenAI reachable as of {{timestamp}}.",
+    "allows_args": false,
+    "version": 1
+  },
+  {
+    "command": "budget",
+    "response": "[keyword/budget] Spend tracking stable; OpenAI budget guard armed as of {{timestamp}}.",
+    "allows_args": false,
+    "version": 1
+  },
+  {
+    "command": "what can you do",
+    "response": "[keyword/info] I classify workload layers and keep OpenAI spend lean ({{timestamp}}).",
+    "allows_args": false,
+    "version": 1
+  },
+  {
+    "command": "commands",
+    "response": "[keyword/commands] status | health | version | router status | budget | help.",
+    "allows_args": false,
+    "version": 1
+  }
+]

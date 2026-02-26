@@ -1,0 +1,14 @@
+# Default configuration for the Marvin lobby dispatcher
+lobby_mode: normal  # normal | brownout | safe
+ollama_base_url: http://ollama:11434
+openai_model: gpt-4.1-mini
+openai_max_daily_usd: 50.0
+circuit_breakers:
+  ollama:
+    fails: 3
+    ttl_sec: 60
+  openai:
+    fails: 2
+    ttl_sec: 30
+keyword_commands_path: config/keywords.json
+health_cache_ttl_sec: 8

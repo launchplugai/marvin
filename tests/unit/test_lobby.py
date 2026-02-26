@@ -118,9 +118,10 @@ class TestLobbyClassifier:
     def test_stats(self, classifier):
         """Test: stats reflect classifier configuration."""
         stats = classifier.get_stats()
-        
-        assert "model" in stats
-        assert "api_key_configured" in stats
+
+        assert "openai_model" in stats
+        assert "ollama_url" in stats
+        assert "ollama_model" in stats
         assert "intents_available" in stats
         assert stats["intents_available"] == len(IntentType)
 

@@ -386,7 +386,7 @@ class HostingerVPSClient:
             project_name: Optional project name.
             env_vars: Optional environment variables for the compose file.
         """
-        payload = {"compose": compose_content}
+        payload = {"content": compose_content}
         if project_name:
             payload["project_name"] = project_name
         if env_vars:

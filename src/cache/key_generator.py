@@ -13,6 +13,7 @@ Implements:
 import hashlib
 import json
 import logging
+import shutil
 import subprocess
 import os
 from typing import Optional, Dict, Any
@@ -218,45 +219,57 @@ class CacheKeyGenerator:
         
         return None
     
+    @staticmethod
+    def _in_container() -> bool:
+        """Detect if we're running inside a Docker/OCI container."""
+        return (
+            os.path.isfile("/.dockerenv")
+            or os.environ.get("container") == "docker"
+            or os.path.isfile("/run/.containerenv")
+        )
+
     def _get_deploy_status(self, project_dir: Path, project_name: str) -> Optional[str]:
         """
         Detect deploy status.
-        
+
         Checks for:
-        - Docker container running
-        - Process running
-        - systemd service status
+        - Docker container running (skipped when inside a container)
+        - systemd service status (skipped when binary absent or in container)
         - Custom status files
         """
         try:
-            # Check if it's a running Docker container
-            result = subprocess.run(
-                ["docker", "ps", "--filter", f"name={project_name}", "-q"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.stdout.strip():
-                return "running_docker"
-            
-            # Check systemd (if available)
-            result = subprocess.run(
-                ["systemctl", "--user", "is-active", project_name],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.stdout.strip() == "active":
-                return "running_systemd"
-            
-            # Check for .status file
+            # Check for .status file first (always works, no external deps)
             status_file = project_dir / ".status"
             if status_file.exists():
                 return status_file.read_text().strip()
-            
+
+            in_container = self._in_container()
+
+            # Docker check — only when docker CLI is available and we're on the host
+            if not in_container and shutil.which("docker"):
+                result = subprocess.run(
+                    ["docker", "ps", "--filter", f"name={project_name}", "-q"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.stdout.strip():
+                    return "running_docker"
+
+            # systemd check — only when systemctl exists and systemd is the init
+            if not in_container and shutil.which("systemctl"):
+                result = subprocess.run(
+                    ["systemctl", "--user", "is-active", project_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.stdout.strip() == "active":
+                    return "running_systemd"
+
         except Exception as e:
             logger.debug(f"Error checking deploy status: {e}")
-        
+
         return None
     
     def _get_deploy_version(self, project_dir: Path) -> Optional[str]:

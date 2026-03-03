@@ -28,7 +28,7 @@ fi
 
 # First-run install (heavy deps — only once, npm globals persist on volume)
 # Bump version to force re-install when new deps are added
-INSTALL_VERSION="2"
+INSTALL_VERSION="3"
 if [ ! -f /root/.claude-hub-v${INSTALL_VERSION} ]; then
   echo '=== Claude Hub: First run - installing dependencies ==='
   apt-get update

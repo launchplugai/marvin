@@ -2,14 +2,23 @@ Deploy or update a Docker project on the VPS.
 
 Usage: /vps-deploy <project-name>
 
-Steps:
-1. Read the project's docker-compose.yml from the local repo (or ask for compose content)
-2. If project exists: POST to /api/vps/v1/virtual-machines/1405440/docker/{name}/update
-3. If project is new: POST to /api/vps/v1/virtual-machines/1405440/docker with project_name and content
-4. Poll the action status until success/failure
-5. Get and display the project logs
+## Token Setup
+Load tokens: `source .env` or use `$ANTHROPIC_API_KEY` from env.
+Set: `TOKEN="${HOSTINGER_API_TOKEN:-$ANTHROPIC_API_KEY}"`
+If no token available, tell user to run /bootstrap first.
 
-Important constraints:
-- Compose content must be <= 8192 characters
+## Steps
+1. Read the compose content (from local file, user input, or ask)
+2. Check compose content is <= 8192 characters (Hostinger hard limit)
+3. Check if project already exists:
+   - GET https://developers.hostinger.com/api/vps/v1/virtual-machines/1405440/docker/{name}
+4. If exists: POST to .../docker/{name}/update with {"content": "..."}
+5. If new: POST to .../docker with {"project_name": "...", "content": "..."}
+6. Poll action status until success/failure:
+   - GET .../actions/{actionId}
+7. Get and display project logs
+
+## Constraints
+- Compose content max: 8192 characters
 - VM ID: 1405440
-- Auth: Bearer token from ANTHROPIC_API_KEY
+- Auth: Bearer $TOKEN

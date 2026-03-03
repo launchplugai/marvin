@@ -209,11 +209,46 @@ Transmission → Cache (3-tier) → Lobby (Groq 8B) → Receptionist (Haiku)
 
 ---
 
-## 9. Secrets Location
+## 9. Secrets & Token Discovery
 
-All secrets live in the vault volume at `/vault/.keys.enc`.
-Currently provisioned:
-- `ANTHROPIC_API_KEY` — Claude API access + Hostinger API auth
-- `GH_TOKEN` — GitHub PAT for repo cloning
+### Where tokens live
 
-To add new keys: update key-locker compose, redeploy, restart claude-hub.
+| Context | Hostinger API Token | GH_TOKEN |
+|---------|--------------------:|:---------|
+| **VPS (claude-hub container)** | `$ANTHROPIC_API_KEY` env var (loaded from vault) | `$GH_TOKEN` env var (loaded from vault) |
+| **Local / new chat session** | `.env` file in repo root (gitignored) | `.env` file in repo root (gitignored) |
+| **Vault source of truth** | `/vault/.keys.enc` on locker-vault volume | `/vault/.keys.enc` on locker-vault volume |
+
+### Cold Start — New Session Without Context
+
+If you're a new Claude Code session with no prior context, do this:
+
+1. **Check if `.env` exists** in the repo root. If yes, read it for tokens.
+2. **If no `.env`**, copy `.env.example` to `.env` and ask the user to fill in the tokens.
+3. **To verify tokens work**, run:
+   ```bash
+   source .env
+   curl -s -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
+     "$HOSTINGER_API_BASE/virtual-machines/$HOSTINGER_VM_ID/docker" \
+     | python3 -m json.tool | head -5
+   ```
+4. **Once tokens are confirmed**, you have full VPS access. Read `hub-card.md` for the architecture.
+
+### Token Naming
+
+The Hostinger API token is stored as `ANTHROPIC_API_KEY` on the VPS for historical reasons.
+In `.env` it's called `HOSTINGER_API_TOKEN` for clarity. They're the same value.
+
+---
+
+## 10. Available Commands
+
+These slash commands are defined in `.claude/commands/` and work in any session on this repo:
+
+| Command | Purpose |
+|---------|---------|
+| `/bootstrap` | Load full system context + check VPS health |
+| `/vps-status` | List all Docker containers and their states |
+| `/vps-logs` | Tail logs from a specific container |
+| `/vps-deploy` | Deploy or update a Docker project |
+| `/vault-update` | Update secrets or scripts in the vault |

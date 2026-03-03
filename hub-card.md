@@ -42,25 +42,55 @@ The VPS runs the code. Chat sessions orchestrate.
 
 ---
 
+## Where Am I Running? (Session Detection)
+
+Before doing anything, figure out which plane you're on:
+
+```
+if /vault/.keys.enc exists:
+    → You're ON THE VPS (inside claude-hub container)
+    → Tokens already in environment: $ANTHROPIC_API_KEY, $GH_TOKEN
+    → Repos at /root/projects/
+    → Direct filesystem access
+
+elif .env file exists in repo root:
+    → You're in a CHAT SESSION with tokens configured
+    → Read .env for HOSTINGER_API_TOKEN, GH_TOKEN
+    → Manage VPS via Hostinger REST API (curl)
+
+else:
+    → COLD START — no tokens available
+    → Check for .env.example → tell user to create .env
+    → Without tokens you CANNOT manage the VPS
+    → You CAN still work on the codebase locally
+```
+
 ## Quick Start for New Sessions
 
-### 1. Verify VPS is alive
+### 1. Load tokens
 ```bash
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://developers.hostinger.com/api/vps/v1/virtual-machines/1405440/docker" \
+# In a chat session (not on VPS):
+source .env
+# Now $HOSTINGER_API_TOKEN and $GH_TOKEN are set
+```
+
+### 2. Verify VPS is alive
+```bash
+curl -s -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
+  "$HOSTINGER_API_BASE/virtual-machines/$HOSTINGER_VM_ID/docker" \
   | python3 -m json.tool
 ```
 
-### 2. Check claude-hub logs
+### 3. Check claude-hub logs
 ```bash
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://developers.hostinger.com/api/vps/v1/virtual-machines/1405440/docker/claude-hub/logs"
+curl -s -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
+  "$HOSTINGER_API_BASE/virtual-machines/$HOSTINGER_VM_ID/docker/claude-hub/logs"
 ```
 
-### 3. Restart if needed
+### 4. Restart if needed
 ```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://developers.hostinger.com/api/vps/v1/virtual-machines/1405440/docker/claude-hub/restart"
+curl -X POST -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
+  "$HOSTINGER_API_BASE/virtual-machines/$HOSTINGER_VM_ID/docker/claude-hub/restart"
 ```
 
 ---
@@ -92,9 +122,10 @@ claude-home (claude-hub only)
 ├── .npm-global/       # Claude Code, ruflo, global npm packages
 ├── .claude/           # Claude Code config + memory
 ├── .git-credentials   # GitHub auth (from GH_TOKEN)
-└── projects/          # Cloned repos (claude-hub, BetApp)
+└── projects/          # Cloned repos
     ├── claude-hub/
     ├── BetApp/
+    ├── marvin/
     ├── CLAUDE.md
     └── .claude-flow/  # Ruflo/Claude Flow V3 runtime
 ```

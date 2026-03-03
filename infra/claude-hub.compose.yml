@@ -1,0 +1,27 @@
+services:
+  claude-code:
+    image: node:20-bookworm
+    container_name: claude-hub
+    hostname: claude-hub
+    restart: unless-stopped
+    working_dir: /root
+    network_mode: host
+    environment:
+      - NODE_OPTIONS=--max-old-space-size=4096
+      - HOME=/root
+      - OLLAMA_HOST=http://localhost:11434
+    volumes:
+      - claude-home:/root
+      - locker-vault:/vault:ro
+    command: ["bash", "/vault/entrypoint.sh"]
+    deploy:
+      resources:
+        limits:
+          memory: 4096M
+
+volumes:
+  claude-home:
+    driver: local
+  locker-vault:
+    external: true
+    name: locker-vault

@@ -15,14 +15,21 @@ else
   echo '=== WARNING: No vault keys found ==='
 fi
 
-# Always install tmux (container FS doesn't persist, but volume does)
-if ! command -v tmux &>/dev/null; then
-  echo '=== Installing tmux ==='
-  apt-get update -qq && apt-get install -y -qq tmux >/dev/null 2>&1
+# Always install ephemeral deps (container FS doesn't persist, but volume does)
+if ! command -v tmux &>/dev/null || ! command -v chromium &>/dev/null; then
+  echo '=== Installing system packages (tmux, playwright deps) ==='
+  apt-get update -qq && apt-get install -y -qq \
+    tmux \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 \
+    libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
+    fonts-liberation xdg-utils >/dev/null 2>&1
 fi
 
 # First-run install (heavy deps — only once, npm globals persist on volume)
-if [ ! -f /root/.claude-hub-ready ]; then
+# Bump version to force re-install when new deps are added
+INSTALL_VERSION="2"
+if [ ! -f /root/.claude-hub-v${INSTALL_VERSION} ]; then
   echo '=== Claude Hub: First run - installing dependencies ==='
   apt-get update
   apt-get install -y --no-install-recommends \
@@ -35,11 +42,12 @@ if [ ! -f /root/.claude-hub-ready ]; then
     > /etc/apt/sources.list.d/github-cli.list
   apt-get update
   apt-get install -y gh
-  npm install -g @anthropic-ai/claude-code ruflo@latest
+  npm install -g @anthropic-ai/claude-code ruflo@latest playwright
+  npx playwright install chromium
   apt-get clean
   rm -rf /var/lib/apt/lists/*
-  touch /root/.claude-hub-ready
-  echo '=== Claude Hub: Installation complete ==='
+  touch /root/.claude-hub-v${INSTALL_VERSION}
+  echo '=== Claude Hub: Installation complete (v'${INSTALL_VERSION}') ==='
 else
   echo '=== Claude Hub: Already initialized ==='
 fi

@@ -1,7 +1,7 @@
 # ADR-001: Close BetApp Stale Branches
 
 **Date:** 2026-03-03
-**Status:** Approved — pending execution
+**Status:** Executed — all branches deleted (verified 2026-03-03)
 **Repo:** launchplugai/BetApp
 
 ---
@@ -38,14 +38,14 @@ Three feature branches have been open on BetApp and need to be closed out.
 
 Delete all three remote branches.
 
-## Execution Commands
+## Execution
 
-```bash
-# From any session with BetApp push access:
-git push origin --delete claude/ticket-38b-a-structural-snapshot
-git push origin --delete claude/ticket-38b-c2-grounding-score
-git push origin --delete betapp/api-sports-games-fix
-```
+All three branches were deleted. Verified via GitHub API on 2026-03-03:
+- `claude/ticket-38b-a-structural-snapshot` — **DELETED**
+- `claude/ticket-38b-c2-grounding-score` — **DELETED**
+- `betapp/api-sports-games-fix` — **DELETED**
+
+BetApp now has only `main`. No open PRs remain.
 
 ## Cherry-pick reference (if needed later)
 

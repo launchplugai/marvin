@@ -11,9 +11,10 @@ Fallback to keyword-based classification if LLM fails.
 
 import json
 import logging
+import re
 import requests
 import os
-from typing import Tuple, Optional
+from typing import Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -66,8 +67,9 @@ class LobbyClassifier:
         self.intents = {
             IntentType.STATUS_CHECK: {
                 "keywords": [
-                    "status", "running", "health", "uptime", "working", "ok",
-                    "how is", "what's the", "is the", "health check", "alive"
+                    "status", "running", "health", "uptime", "working",
+                    "how is", "is the", "health check", "alive",
+                    r"\bok\b",
                 ],
                 "cacheable": True,
                 "ttl": 60,
@@ -90,8 +92,9 @@ class LobbyClassifier:
             },
             IntentType.DEBUGGING: {
                 "keywords": [
-                    "error", "broken", "fix", "debug", "why", "not working",
-                    "issue", "bug", "failed", "crash", "exception"
+                    "error", "broken", "debug", "not working",
+                    "issue", "bug", "failed", "crash", "exception",
+                    r"\bfix\b", r"\bwhy\b",
                 ],
                 "cacheable": False,
                 "ttl": None,
@@ -145,23 +148,28 @@ class LobbyClassifier:
     def _classify_by_keywords(self, message: str) -> Optional[Classification]:
         """Try to classify using keyword matching (fast, no API)."""
         msg_lower = message.lower()
-        
+
         for intent, config in self.intents.items():
             if intent == IntentType.UNKNOWN:
                 continue
-            
-            # Check if any keyword matches
+
             for keyword in config["keywords"]:
-                if keyword in msg_lower:
+                # Keywords starting with \b are regex patterns (word-boundary)
+                if keyword.startswith(r"\b"):
+                    matched = bool(re.search(keyword, msg_lower))
+                else:
+                    matched = keyword in msg_lower
+
+                if matched:
                     return Classification(
                         intent=intent.value,
-                        confidence=0.95,  # High confidence for keyword matches
+                        confidence=0.95,
                         method="keyword",
                         cacheable=config["cacheable"],
                         ttl=config["ttl"],
                         reason=f"Matched keyword: '{keyword}'",
                     )
-        
+
         return None
     
     def _classify_by_llm(self, message: str) -> Optional[Classification]:

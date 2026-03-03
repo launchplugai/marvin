@@ -8,11 +8,6 @@ import pytest
 import time
 import tempfile
 import os
-from pathlib import Path
-import sys
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from cache.cache import CacheLayer
 from cache.key_generator import CacheKeyGenerator
@@ -176,7 +171,8 @@ class TestCacheLayer:
         assert stats["hits"] == 3
         assert stats["misses"] == 1
         assert stats["hit_rate_percent"] == 75.0
-        assert stats["tokens_saved"] == 300
+        # 2 hits on status_check (100 each) + 1 hit on how_to (200) = 400
+        assert stats["tokens_saved"] == 400
 
 
 class TestCacheKeyGenerator:

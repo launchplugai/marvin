@@ -5,11 +5,6 @@ Phase 1 Day 3
 """
 
 import pytest
-import sys
-from pathlib import Path
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from lobby.classifier import LobbyClassifier, IntentType
 

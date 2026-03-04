@@ -14,7 +14,10 @@ Run this decision tree **immediately** — before reading anything else:
   YES → You are THE ORACLE (VPS container). Go to Section A.
   NO  →
     .env exists in repo root?
-      YES → You are a REMOTE CONTROL with credentials. Go to Section B.
+      YES →
+        HOSTINGER_API_TOKEN is non-empty in .env?
+          YES → You are a REMOTE CONTROL with credentials. Go to Section B.
+          NO  → You are a DEAD REMOTE (file exists, batteries missing). Go to Section B.1.
       NO  →
         .env.example exists?
           YES → You are a COLD START. Tell the user:
@@ -76,6 +79,38 @@ curl -s -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
 **Available slash commands:** `/bootstrap`, `/vps-status`, `/vps-logs`, `/vps-deploy`, `/vault-update`
 
 **Skip to Section 1 for system architecture.**
+
+---
+
+## B.1. YOU ARE A DEAD REMOTE (batteries missing)
+
+You found `.env` but the tokens are empty. You have the wiring but no power.
+
+**The source of truth for all tokens is the key-locker vault on the VPS.**
+The vault lives on a Docker volume (`locker-vault`) mounted read-only at `/vault/` inside `claude-hub`.
+The key-locker container writes tokens to `/vault/.keys.enc` on deploy.
+
+**Token recovery — try in order:**
+
+1. **Ask the user.** They may have the tokens stored elsewhere (password manager, Hostinger dashboard, GitHub settings). Say:
+   > "Your `.env` has empty tokens. I need `HOSTINGER_API_TOKEN` and `GH_TOKEN` to connect to the VPS.
+   > The Hostinger token is at: Hostinger panel → API Keys.
+   > The GitHub token is at: GitHub → Settings → Developer settings → Personal access tokens.
+   > Paste them here and I'll store them securely in `.env` (gitignored)."
+
+2. **If user provides one token (Hostinger):** Use it to pull vault contents:
+   ```bash
+   curl -s -H "Authorization: Bearer $TOKEN" \
+     "https://developers.hostinger.com/api/vps/v1/virtual-machines/1405440/docker/key-locker" \
+     | python3 -c "import sys,json; print(json.load(sys.stdin))"
+   ```
+   The compose YAML contains the `printf` line with all secrets. Extract and populate `.env`.
+
+3. **If no tokens available:** Fall through to Section C (Local Only). You can still work on code, run tests, and push to GitHub — you just can't manage the VPS.
+
+**Important:** `.env` is gitignored. Never commit tokens. The only persistent token store is the vault on the VPS.
+
+**Once tokens are populated, go back to Section B.**
 
 ---
 

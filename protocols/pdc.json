@@ -1,0 +1,199 @@
+{
+  "catalogVersion": "1.0.0",
+  "dnaContractVersion": "dna_contract_v1",
+  "generatedAt": "2026-03-05T00:00:00Z",
+  "defaults": {
+    "enabled": true,
+    "tier": "PRO",
+    "riskWeight": 0.10,
+    "maxImpact": {
+      "stabilityModifier": -0.12,
+      "fragilityDelta": 0.12
+    },
+    "confidence": {
+      "minTriggerConfidence": 0.60,
+      "minEmitConfidence": 0.50
+    },
+    "artifactPolicy": {
+      "emitEvidenceAlwaysIfTriggered": true,
+      "emitAuditNoteAlways": true
+    }
+  },
+  "protocols": [
+    {
+      "protocolId": "fatigue_b2b_v1",
+      "name": "Back-to-Back Fatigue",
+      "sport": ["NBA"],
+      "category": "physical_state",
+      "enabled": true,
+      "tier": "PRO",
+      "inputs": {
+        "required": ["schedule", "travel", "team_metrics"],
+        "optional": ["injuries"]
+      },
+      "evaluator": {
+        "type": "python",
+        "module": "protocol_engine.evaluators.fatigue_b2b",
+        "entrypoint": "evaluate"
+      },
+      "thresholds": {
+        "travelMilesMin": 600,
+        "restHoursMax": 24
+      },
+      "weights": {
+        "riskWeight": 0.12,
+        "maxImpact": {
+          "stabilityModifier": -0.10,
+          "fragilityDelta": 0.00
+        }
+      },
+      "impactModel": {
+        "type": "stability_modifier",
+        "mode": "additive",
+        "clamp": {
+          "min": -0.12,
+          "max": 0.00
+        }
+      },
+      "artifactMapping": {
+        "evidence": {
+          "summaryTemplate": "Team on short rest with travel strain.",
+          "fields": ["played_last_night", "travel_miles", "rest_hours"]
+        },
+        "weight": {
+          "target": "stabilityModifier",
+          "deltaPath": "impact.value"
+        },
+        "auditNote": {
+          "noteTemplate": "Applied stability penalty due to b2b + travel."
+        }
+      },
+      "explainTemplates": {
+        "title": "Back-to-back fatigue risk",
+        "userSummary": {
+          "novice": "Short rest can make outcomes swingier than they look.",
+          "standard": "Short rest + travel increases variance and late-game dropoff risk.",
+          "aggressive": "High-variance spot: fatigue can break a 'safe' leg."
+        }
+      },
+      "tags": ["fatigue", "rest", "travel"]
+    },
+    {
+      "protocolId": "pace_shock_v1",
+      "name": "Pace Mismatch Shock",
+      "sport": ["NBA"],
+      "category": "tactical_matchup",
+      "enabled": true,
+      "tier": "PRO",
+      "inputs": {
+        "required": ["team_metrics", "opponent_metrics"],
+        "optional": ["recent_form"]
+      },
+      "evaluator": {
+        "type": "python",
+        "module": "protocol_engine.evaluators.pace_shock",
+        "entrypoint": "evaluate"
+      },
+      "thresholds": {
+        "paceDiffMin": 4.0,
+        "paceRankDiffMin": 8
+      },
+      "weights": {
+        "riskWeight": 0.10,
+        "maxImpact": {
+          "stabilityModifier": -0.08,
+          "fragilityDelta": 0.06
+        }
+      },
+      "impactModel": {
+        "type": "stability_modifier",
+        "mode": "additive",
+        "clamp": {
+          "min": -0.10,
+          "max": 0.00
+        }
+      },
+      "artifactMapping": {
+        "evidence": {
+          "summaryTemplate": "Large pace differential creates scoring volatility.",
+          "fields": ["team_pace", "opponent_pace", "pace_diff", "pace_rank_diff"]
+        },
+        "weight": {
+          "target": "stabilityModifier",
+          "deltaPath": "impact.value"
+        },
+        "auditNote": {
+          "noteTemplate": "Applied stability modifier for pace mismatch between teams."
+        }
+      },
+      "explainTemplates": {
+        "title": "Pace mismatch volatility",
+        "userSummary": {
+          "novice": "These teams play at very different speeds, which makes the game less predictable.",
+          "standard": "Pace gap of {pace_diff} possessions/game creates scoring variance outside normal range.",
+          "aggressive": "Pace shock spot — tempo mismatch inflates variance. Treat totals/spreads with caution."
+        }
+      },
+      "tags": ["pace", "tempo", "matchup", "volatility"]
+    },
+    {
+      "protocolId": "lineup_instability_v1",
+      "name": "Lineup Instability",
+      "sport": ["NBA"],
+      "category": "volatility",
+      "enabled": true,
+      "tier": "FREE",
+      "inputs": {
+        "required": ["team_metrics", "injuries"],
+        "optional": ["recent_form"]
+      },
+      "evaluator": {
+        "type": "python",
+        "module": "protocol_engine.evaluators.lineup_instability",
+        "entrypoint": "evaluate"
+      },
+      "thresholds": {
+        "starterChangesMin": 2,
+        "minutesDisruptedPctMin": 0.30,
+        "injuryCountMin": 3
+      },
+      "weights": {
+        "riskWeight": 0.14,
+        "maxImpact": {
+          "stabilityModifier": -0.12,
+          "fragilityDelta": 0.10
+        }
+      },
+      "impactModel": {
+        "type": "fragility_delta",
+        "mode": "additive",
+        "clamp": {
+          "min": 0.00,
+          "max": 0.12
+        }
+      },
+      "artifactMapping": {
+        "evidence": {
+          "summaryTemplate": "Significant lineup disruption increases outcome uncertainty.",
+          "fields": ["starter_changes", "minutes_disrupted_pct", "injury_count", "key_players_out"]
+        },
+        "weight": {
+          "target": "fragilityDelta",
+          "deltaPath": "impact.value"
+        },
+        "auditNote": {
+          "noteTemplate": "Applied fragility increase due to lineup instability and injury disruption."
+        }
+      },
+      "explainTemplates": {
+        "title": "Lineup instability warning",
+        "userSummary": {
+          "novice": "This team has a lot of changes to their usual lineup, which makes things harder to predict.",
+          "standard": "Multiple starter changes and injury disruption increase fragility of projected outcomes.",
+          "aggressive": "Lineup in flux — model confidence is lower than surface-level stats suggest."
+        }
+      },
+      "tags": ["lineup", "injuries", "volatility", "rotation"]
+    }
+  ]
+}

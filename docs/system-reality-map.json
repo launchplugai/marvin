@@ -1,0 +1,338 @@
+{
+  "srmVersion": "1.0.0",
+  "generatedAt": "2026-03-05",
+  "stack": {
+    "layers": [
+      "1_UI: screens, toggles, builder, protocol view",
+      "2_API: FastAPI routes / controllers",
+      "3_PIPELINE: request → dna core → protocols → sherlock → response",
+      "4_ENGINES: DNA Matrix Core, Protocol Engine, Sherlock explainability",
+      "5_DATA: stats DB, odds provider, injuries provider, schedule/travel",
+      "6_STORAGE: bet evaluations, compare logs, receipts/audits"
+    ]
+  },
+  "capabilities": [
+    {
+      "capabilityId": "cap_eval_parlay",
+      "name": "Evaluate Parlay",
+      "intent": "Compute risk/probability/confidence and explain why.",
+      "tier": "FREE",
+      "status": "UNKNOWN",
+      "backend": {
+        "apiRoutes": ["/api/evaluate"],
+        "pipelineSteps": ["input_normalize", "dna_core", "sherlock", "format_response"],
+        "modules": ["app/pipeline.py", "app/dna/core_engine.py", "app/sherlock/*"]
+      },
+      "ui": {
+        "screens": ["ParlayBuilder", "ResultsView"],
+        "levers": ["submit_parlay"]
+      },
+      "tests": {
+        "smoke": "curl /api/evaluate",
+        "unit": [],
+        "e2e": []
+      },
+      "notes": ["Needs verification — route existence and pipeline flow unconfirmed"]
+    },
+    {
+      "capabilityId": "cap_protocol_engine",
+      "name": "Protocol Engine",
+      "intent": "Run PDC-defined protocols against game context to produce DNA artifacts and impact modifiers.",
+      "tier": "PRO",
+      "status": "WORKING",
+      "backend": {
+        "apiRoutes": ["/api/evaluate"],
+        "pipelineSteps": ["input_normalize", "dna_core", "protocol_engine", "artifact_mapper", "sherlock", "format_response"],
+        "modules": [
+          "src/protocol_engine/runner.py",
+          "src/protocol_engine/loader.py",
+          "src/protocol_engine/artifact_mapper.py",
+          "src/protocol_engine/models.py",
+          "src/protocol_engine/evaluators/fatigue_b2b.py",
+          "src/protocol_engine/evaluators/pace_shock.py",
+          "src/protocol_engine/evaluators/lineup_instability.py"
+        ]
+      },
+      "ui": {
+        "screens": ["ProtocolView", "ResultsView"],
+        "levers": ["lever_protocol_engine_toggle"]
+      },
+      "tests": {
+        "smoke": "python -m pytest tests/unit/test_protocol_engine/ -v",
+        "unit": [
+          "tests/unit/test_protocol_engine/test_models.py",
+          "tests/unit/test_protocol_engine/test_loader.py",
+          "tests/unit/test_protocol_engine/test_evaluators.py",
+          "tests/unit/test_protocol_engine/test_artifact_mapper.py",
+          "tests/unit/test_protocol_engine/test_runner.py"
+        ],
+        "e2e": []
+      },
+      "notes": ["PDC catalog built with 3 protocols. Loader + linter + runner + artifact mapper all implemented."]
+    },
+    {
+      "capabilityId": "cap_dna_core",
+      "name": "DNA Matrix Core",
+      "intent": "Core probability/confidence engine for bet evaluation.",
+      "tier": "FREE",
+      "status": "UNKNOWN",
+      "backend": {
+        "apiRoutes": ["/api/evaluate"],
+        "pipelineSteps": ["dna_core"],
+        "modules": ["app/dna/core_engine.py"]
+      },
+      "ui": {
+        "screens": ["ResultsView"],
+        "levers": []
+      },
+      "tests": {
+        "smoke": "",
+        "unit": [],
+        "e2e": []
+      },
+      "notes": ["Needs wire trace — verify module exists on BetApp VPS"]
+    },
+    {
+      "capabilityId": "cap_sherlock",
+      "name": "Sherlock Explainability",
+      "intent": "Generate human-readable explanations of DNA and protocol outputs.",
+      "tier": "FREE",
+      "status": "UNKNOWN",
+      "backend": {
+        "apiRoutes": ["/api/evaluate"],
+        "pipelineSteps": ["sherlock"],
+        "modules": ["app/sherlock/*"]
+      },
+      "ui": {
+        "screens": ["ResultsView", "ExplainView"],
+        "levers": []
+      },
+      "tests": {
+        "smoke": "",
+        "unit": [],
+        "e2e": []
+      },
+      "notes": ["Needs wire trace — verify module exists on BetApp VPS"]
+    },
+    {
+      "capabilityId": "cap_live_odds",
+      "name": "Live Odds Feed",
+      "intent": "Fetch and display current odds from provider.",
+      "tier": "FREE",
+      "status": "UNKNOWN",
+      "backend": {
+        "apiRoutes": ["/api/odds"],
+        "pipelineSteps": ["odds_fetch"],
+        "modules": ["app/odds_provider.py"]
+      },
+      "ui": {
+        "screens": ["OddsPanel", "ParlayBuilder"],
+        "levers": ["lever_live_odds_toggle"]
+      },
+      "tests": {
+        "smoke": "curl /api/odds",
+        "unit": [],
+        "e2e": []
+      },
+      "notes": ["Known failure mode: provider call may return stale/empty data"]
+    },
+    {
+      "capabilityId": "cap_compare_mode",
+      "name": "Compare Mode (Core vs Core+Protocols)",
+      "intent": "Run pipeline twice — once CORE_ONLY, once CORE_PLUS_PROTOCOLS — and show diff.",
+      "tier": "ELITE",
+      "status": "UNKNOWN",
+      "backend": {
+        "apiRoutes": ["/api/evaluate"],
+        "pipelineSteps": ["dna_core", "protocol_engine(shadow)", "compare_diff"],
+        "modules": ["src/protocol_engine/runner.py"]
+      },
+      "ui": {
+        "screens": ["CompareView"],
+        "levers": ["lever_compare_mode_toggle"]
+      },
+      "tests": {
+        "smoke": "",
+        "unit": [],
+        "e2e": []
+      },
+      "notes": ["shadow_mode flag implemented in ProtocolRunner. UI/API wiring unknown."]
+    },
+    {
+      "capabilityId": "cap_marvin_router",
+      "name": "Marvin LLM Router",
+      "intent": "Route requests to cheapest capable LLM provider.",
+      "tier": "FREE",
+      "status": "WORKING",
+      "backend": {
+        "apiRoutes": [],
+        "pipelineSteps": ["lobby_classify", "cache_check", "rate_limit", "dispatch"],
+        "modules": [
+          "src/lobby/classifier.py",
+          "src/cache/cache.py",
+          "src/rate_limiter/tracker.py"
+        ]
+      },
+      "ui": {
+        "screens": [],
+        "levers": []
+      },
+      "tests": {
+        "smoke": "python -m pytest tests/unit/ -v",
+        "unit": [
+          "tests/unit/test_cache.py",
+          "tests/unit/test_lobby.py",
+          "tests/unit/test_rate_limiter.py"
+        ],
+        "e2e": []
+      },
+      "notes": ["Phase 1 complete. 47 tests passing. Internal routing engine — no direct UI."]
+    }
+  ],
+  "uiLevers": [
+    {
+      "leverId": "lever_protocol_engine_toggle",
+      "name": "Protocol Engine Toggle",
+      "type": "toggle",
+      "expectedBehavior": {
+        "on": "Use CORE_PLUS_PROTOCOLS mode; include triggered protocols + artifacts.",
+        "off": "Use CORE_ONLY mode; no protocol impacts."
+      },
+      "wiresTo": {
+        "requestField": "dnaMode",
+        "backendFlag": "DNA_MODE",
+        "pipelineBranch": "protocol_engine"
+      },
+      "status": "UNKNOWN",
+      "failureModes": [
+        "Toggle changes UI but request never changes dnaMode field",
+        "Request changes but pipeline ignores dnaMode",
+        "Pipeline runs protocols but response never includes protocol section",
+        "Protocol artifacts fail contract validation and get dropped silently"
+      ]
+    },
+    {
+      "leverId": "lever_live_odds_toggle",
+      "name": "Live Odds Toggle",
+      "type": "toggle",
+      "expectedBehavior": {
+        "on": "Fetch and display live odds from provider.",
+        "off": "Use static/cached odds or hide odds panel."
+      },
+      "wiresTo": {
+        "requestField": "useLiveOdds",
+        "backendFlag": "LIVE_ODDS_ENABLED",
+        "pipelineBranch": "odds_fetch"
+      },
+      "status": "UNKNOWN",
+      "failureModes": [
+        "Toggle present but no request field change",
+        "Provider call fails silently, UI shows stale data",
+        "Odds returned but not used in scoring pipeline"
+      ]
+    },
+    {
+      "leverId": "lever_compare_mode_toggle",
+      "name": "Compare Mode Toggle",
+      "type": "toggle",
+      "expectedBehavior": {
+        "on": "Show side-by-side CORE_ONLY vs CORE_PLUS_PROTOCOLS results.",
+        "off": "Normal single-result view."
+      },
+      "wiresTo": {
+        "requestField": "compareShadow",
+        "backendFlag": "COMPARE_SHADOW",
+        "pipelineBranch": "protocol_engine(shadow)"
+      },
+      "status": "UNKNOWN",
+      "failureModes": [
+        "Toggle exists but API ignores compareShadow field",
+        "Both runs execute but diff never computed",
+        "Diff computed but UI doesn't render comparison"
+      ]
+    },
+    {
+      "leverId": "lever_tier_gate",
+      "name": "Tier Gating (Free/Pro/Elite)",
+      "type": "selector",
+      "expectedBehavior": {
+        "FREE": "Only FREE-tier protocols and capabilities available.",
+        "PRO": "FREE + PRO protocols and capabilities.",
+        "ELITE": "All protocols including compare mode."
+      },
+      "wiresTo": {
+        "requestField": "userTier",
+        "backendFlag": "USER_TIER",
+        "pipelineBranch": "protocol_engine.tier_filter"
+      },
+      "status": "WORKING",
+      "failureModes": [
+        "Tier field sent but backend ignores it",
+        "Backend filters but UI shows all features regardless",
+        "Downgrade path: user was PRO, now FREE, but cached protocols still run"
+      ]
+    }
+  ],
+  "wireMap": {
+    "routes": [
+      {"path": "/api/evaluate", "method": "POST", "status": "UNKNOWN", "wiredTo": "pipeline.evaluate"},
+      {"path": "/api/odds", "method": "GET", "status": "UNKNOWN", "wiredTo": "odds_provider.fetch"},
+      {"path": "/api/health", "method": "GET", "status": "UNKNOWN", "wiredTo": "healthcheck"}
+    ],
+    "pipelines": [
+      {
+        "name": "core_evaluation",
+        "steps": ["input_normalize", "dna_core", "format_response"],
+        "mode": "CORE_ONLY",
+        "status": "UNKNOWN"
+      },
+      {
+        "name": "protocol_evaluation",
+        "steps": ["input_normalize", "dna_core", "protocol_engine", "artifact_mapper", "impact_merge", "sherlock", "format_response"],
+        "mode": "CORE_PLUS_PROTOCOLS",
+        "status": "UNKNOWN"
+      },
+      {
+        "name": "shadow_compare",
+        "steps": ["run(CORE_ONLY)", "run(CORE_PLUS_PROTOCOLS, shadow=true)", "diff"],
+        "mode": "COMPARE",
+        "status": "UNKNOWN"
+      }
+    ],
+    "engines": [
+      {"name": "DNA Matrix Core", "module": "app/dna/core_engine.py", "status": "UNKNOWN"},
+      {"name": "Protocol Engine", "module": "src/protocol_engine/runner.py", "status": "WORKING"},
+      {"name": "Sherlock", "module": "app/sherlock/*", "status": "UNKNOWN"},
+      {"name": "Marvin Router", "module": "src/lobby/classifier.py", "status": "WORKING"}
+    ],
+    "dataSources": [
+      {"name": "Stats DB (NBA)", "type": "database", "status": "UNKNOWN"},
+      {"name": "Stats DB (NFL)", "type": "database", "status": "UNKNOWN"},
+      {"name": "Odds Provider", "type": "external_api", "status": "UNKNOWN"},
+      {"name": "Injuries Provider", "type": "external_api", "status": "UNKNOWN"},
+      {"name": "Schedule/Travel", "type": "database", "status": "UNKNOWN"}
+    ],
+    "storage": [
+      {"name": "Bet Evaluations", "type": "database", "status": "UNKNOWN"},
+      {"name": "Compare Logs", "type": "file/db", "status": "UNKNOWN"},
+      {"name": "Audit Receipts", "type": "database", "status": "UNKNOWN"}
+    ],
+    "uiScreens": [
+      {"name": "ParlayBuilder", "status": "UNKNOWN"},
+      {"name": "ResultsView", "status": "UNKNOWN"},
+      {"name": "ProtocolView", "status": "UNKNOWN"},
+      {"name": "OddsPanel", "status": "UNKNOWN"},
+      {"name": "CompareView", "status": "UNKNOWN"},
+      {"name": "ExplainView", "status": "UNKNOWN"}
+    ]
+  },
+  "auditSummary": [
+    {"capability": "Evaluate Parlay", "uiEntry": "ParlayBuilder", "apiRoute": "/api/evaluate", "pipeline": "core", "engine": "dna_core", "status": "UNKNOWN", "why": "Not wire-traced yet"},
+    {"capability": "Protocol Engine", "uiEntry": "Toggle", "apiRoute": "/api/evaluate", "pipeline": "+protocol", "engine": "protocol_engine", "status": "WORKING", "why": "PDC + loader + runner + evaluators built and tested"},
+    {"capability": "Live Odds", "uiEntry": "OddsPanel", "apiRoute": "/api/odds", "pipeline": "odds_fetch", "engine": "odds_provider", "status": "UNKNOWN", "why": "Needs VPS wire trace"},
+    {"capability": "Protocol View", "uiEntry": "ProtocolView", "apiRoute": "n/a", "pipeline": "n/a", "engine": "n/a", "status": "MISSING", "why": "UI may exist but no data source wired"},
+    {"capability": "Compare Mode", "uiEntry": "CompareView", "apiRoute": "/api/evaluate", "pipeline": "shadow", "engine": "protocol_engine(shadow)", "status": "UNKNOWN", "why": "shadow_mode implemented in runner, UI/API unknown"},
+    {"capability": "Sherlock Explain", "uiEntry": "ExplainView", "apiRoute": "/api/evaluate", "pipeline": "sherlock", "engine": "sherlock", "status": "UNKNOWN", "why": "Needs VPS wire trace"},
+    {"capability": "Marvin Router", "uiEntry": "none", "apiRoute": "internal", "pipeline": "lobby→cache→dispatch", "engine": "lobby+cache+rate_limiter", "status": "WORKING", "why": "47 tests passing, Phase 1 complete"}
+  ]
+}

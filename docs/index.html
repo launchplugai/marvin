@@ -264,7 +264,7 @@ projects/          <span style="color:var(--info)">claude-hub/ BetApp/ marvin/</
         <div class="project-title"><span class="dot live"></span>DNA Bet Engine</div>
         <div class="project-meta">
           <span class="tag tag-green">PRODUCTION</span>
-          <span class="tag tag-blue">Railway</span>
+          <span class="tag tag-blue">VPS Docker</span>
           <span class="tag tag-purple">FastAPI</span>
         </div>
       </div>
@@ -290,7 +290,7 @@ projects/          <span style="color:var(--info)">claude-hub/ BetApp/ marvin/</
     <div class="section-label">Repositories</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
       <div class="organism"><div class="organism-status running"></div><div class="organism-name">launchplugai/marvin</div><div class="organism-image">Multi-agent LLM routing engine</div><div class="organism-role">Cache + Lobby + Rate Limiter (Phase 1 complete). 47 tests passing.</div><div class="organism-port">Phase 2 pending</div></div>
-      <div class="organism"><div class="organism-status running"></div><div class="organism-name">launchplugai/BetApp</div><div class="organism-image">DNA Bet Engine / Parlay eval</div><div class="organism-role">Sprint 1 locked. Railway auto-deploy. 1,068 tests passing.</div><div class="organism-port">production</div></div>
+      <div class="organism"><div class="organism-status running"></div><div class="organism-name">launchplugai/BetApp</div><div class="organism-image">DNA Bet Engine / Parlay eval</div><div class="organism-role">Sprint 1 locked. VPS Docker deploy (:19801). 1,068 tests passing.</div><div class="organism-port">production</div></div>
       <div class="organism"><div class="organism-status running"></div><div class="organism-name">launchplugai/claude-hub</div><div class="organism-image">VPS infrastructure</div><div class="organism-role">Docker compose, entrypoint, bootstrap scripts. The Oracle's skeleton.</div><div class="organism-port">main</div></div>
     </div>
 
@@ -302,7 +302,7 @@ projects/          <span style="color:var(--info)">claude-hub/ BetApp/ marvin/</
         <div class="k-card k-done"><div class="k-id">S1-03</div><div class="k-title">Tier gating</div><div class="k-tags"><span class="k-tag">api</span></div></div>
         <div class="k-card k-done"><div class="k-id">S1-04</div><div class="k-title">Web UI 4-screen layout</div><div class="k-tags"><span class="k-tag">frontend</span></div></div>
         <div class="k-card k-done"><div class="k-id">S1-05</div><div class="k-title">Health + build endpoints</div><div class="k-tags"><span class="k-tag">infra</span></div></div>
-        <div class="k-card k-done"><div class="k-id">S1-06</div><div class="k-title">Railway deployment</div><div class="k-tags"><span class="k-tag">deploy</span></div></div>
+        <div class="k-card k-done"><div class="k-id">S1-06</div><div class="k-title">VPS Docker deployment</div><div class="k-tags"><span class="k-tag">deploy</span></div></div>
         <div class="k-card k-done"><div class="k-id">S1-07</div><div class="k-title">Playwright E2E suite</div><div class="k-tags"><span class="k-tag">test</span></div></div>
         <div class="k-card k-done"><div class="k-id">S1-08</div><div class="k-title">Contract versioning</div><div class="k-tags"><span class="k-tag">api</span></div></div>
       </div>
@@ -312,7 +312,7 @@ projects/          <span style="color:var(--info)">claude-hub/ BetApp/ marvin/</
       </div>
       <div class="kanban-col"><div class="kanban-head" style="color:var(--dead)">Blocked <span class="cnt">3</span></div>
         <div class="k-card k-blocked"><div class="k-id">B001</div><div class="k-title">PYTHONPATH import failures (127 tests)</div><div class="k-tags"><span class="k-tag">Tess</span><span class="k-tag">test</span></div></div>
-        <div class="k-card k-blocked"><div class="k-id">B002</div><div class="k-title">Railway deploy failures</div><div class="k-tags"><span class="k-tag">Ira</span><span class="k-tag">infra</span></div></div>
+        <div class="k-card k-done"><div class="k-id">B002</div><div class="k-title">Railway deploy failures (RESOLVED — migrated to VPS)</div><div class="k-tags"><span class="k-tag">Ira</span><span class="k-tag">infra</span></div></div>
         <div class="k-card k-blocked"><div class="k-id">B003</div><div class="k-title">DNS not pointed to VPS</div><div class="k-tags"><span class="k-tag">External</span></div></div>
       </div>
       <div class="kanban-col"><div class="kanban-head" style="color:var(--tx3)">Backlog <span class="cnt">4</span></div>
@@ -326,7 +326,7 @@ projects/          <span style="color:var(--info)">claude-hub/ BetApp/ marvin/</
     <div class="section-label">Active Blockers</div>
     <div class="blocker-list">
       <div class="blocker"><div class="blocker-top"><span class="blocker-id">B001</span><span class="blocker-owner">Tess // Test</span></div><div class="blocker-title">PYTHONPATH not including dna-matrix/src -- 127 test failures</div><div class="blocker-impact">Fix: Add dna-matrix/src to PYTHONPATH in test config</div></div>
-      <div class="blocker"><div class="blocker-top"><span class="blocker-id">B002</span><span class="blocker-owner">Ira // Infra</span></div><div class="blocker-title">Railway deployment intermittent failures</div><div class="blocker-impact">Mitigation: Evaluating switch to VPS-only deployment</div></div>
+      <div class="blocker"><div class="blocker-top"><span class="blocker-id">B002</span><span class="blocker-owner">Ira // Infra</span></div><div class="blocker-title">Railway deployment — RESOLVED</div><div class="blocker-impact">Migrated to VPS Docker container on 187.77.211.80:19801 (2026-03)</div></div>
       <div class="blocker"><div class="blocker-top"><span class="blocker-id">B003</span><span class="blocker-owner">Ben // External</span></div><div class="blocker-title">DNS not pointed to VPS</div><div class="blocker-impact">Waiting on domain owner to update nameservers</div></div>
     </div>
   </div>
@@ -450,7 +450,7 @@ function switchView(name) {
 }
 
 // ==================== BETAPP PROBING ====================
-const BETAPP = 'https://dna-production-cb47.up.railway.app';
+const BETAPP = 'http://187.77.211.80:19801';
 const ENDPOINTS = [
   { m:'GET', p:'/health', d:'Health check' },
   { m:'GET', p:'/build', d:'Build metadata' },

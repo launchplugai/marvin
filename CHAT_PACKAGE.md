@@ -12,7 +12,7 @@ This system has three components:
 | Component | Repo | Purpose | Live URL |
 |-----------|------|---------|----------|
 | **Marvin Core** | `launchplugai/marvin` | Multi-agent LLM routing engine | Not deployed yet |
-| **DNA Bet Engine (BetApp)** | `launchplugai/BetApp` | Sports parlay evaluation app | `https://dna-production-cb47.up.railway.app` |
+| **DNA Bet Engine (BetApp)** | `launchplugai/BetApp` | Sports parlay evaluation app | `http://187.77.211.80:19801` (VPS) |
 | **Claude Hub** | `launchplugai/claude-hub` | VPS container infrastructure | Running on `187.77.211.80` |
 
 ---
@@ -42,6 +42,7 @@ curl -s -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
 
 | Container | Image | Purpose | Ports |
 |-----------|-------|---------|-------|
+| `betapp` | python:3.12-slim | DNA Bet Engine (FastAPI/Uvicorn) | :19801 |
 | `claude-hub` | node:20-bookworm | Claude Code running in tmux, host network | host |
 | `ollama-wmf4` | ollama/ollama | Local LLM inference | 127.0.0.1:11434 |
 | `marvin-skills` | node:20-slim | HTTP probe server | :19800 |
@@ -91,9 +92,9 @@ To update vault contents: modify key-locker compose → delete old → recreate 
 ## 4. DNA BET ENGINE (BetApp)
 
 ### Live Deployment
-- **URL:** `https://dna-production-cb47.up.railway.app`
+- **URL:** `http://187.77.211.80:19801` (VPS Docker container)
 - **Runtime:** Python 3.12 / FastAPI / Uvicorn
-- **Deploy:** Railway auto-deploys on push to `main` (Nixpacks)
+- **Deploy:** VPS Docker container via Hostinger API (was Railway, migrated 2026-03)
 - **Health:** `GET /health` → `{"status": "healthy", "service": "dna-matrix"}`
 - **Build info:** `GET /build` → commit, build time, environment
 
@@ -136,7 +137,7 @@ Tests live in `e2e/` directory:
 - `app-ui.spec.ts` — Dashboard, browse, builder, auth screens
 - `evaluate-flow.spec.ts` — Evaluate API, landing page, root redirect
 
-Run: `npx playwright test` (targets live Railway deployment by default)
+Run: `npx playwright test` (targets live VPS deployment at `http://187.77.211.80:19801`)
 
 GitHub Actions CI runs Playwright on every push to `main` (`.github/workflows/e2e.yml` — needs `workflow` scope PAT to push).
 
@@ -227,7 +228,7 @@ marvin-skills (:19800)     ←→ Claude Hub (host network)
 | Repo | Branch | CI | Deploy |
 |------|--------|-----|--------|
 | `launchplugai/marvin` | main | — | VPS (planned) |
-| `launchplugai/BetApp` | main | Playwright E2E (GH Actions) | Railway auto-deploy on push |
+| `launchplugai/BetApp` | main | Playwright E2E (GH Actions) | VPS Docker (:19801) |
 | `launchplugai/claude-hub` | main | — | VPS Docker |
 
 ### GitHub Access
@@ -248,11 +249,11 @@ curl -H "Authorization: token $GH_TOKEN" https://api.github.com/repos/launchplug
 curl -s -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
   "https://developers.hostinger.com/api/vps/v1/virtual-machines/1405440/docker" | python3 -m json.tool
 
-# Check BetApp health
-curl -s https://dna-production-cb47.up.railway.app/health | python3 -m json.tool
+# Check BetApp health (VPS)
+curl -s http://187.77.211.80:19801/health | python3 -m json.tool
 
-# Check BetApp build
-curl -s https://dna-production-cb47.up.railway.app/build | python3 -m json.tool
+# Check BetApp build (VPS)
+curl -s http://187.77.211.80:19801/build | python3 -m json.tool
 
 # Restart claude-hub
 curl -X POST -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \

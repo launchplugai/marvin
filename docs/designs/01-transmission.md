@@ -71,7 +71,7 @@ Every request travels inside an envelope. Each layer adds its stamp but never re
       "last_commit_msg": "fix: update requirements.txt",
       "deploy_status": "vps_healthy",
       "test_status": "127 failures (dna-matrix imports)",
-      "open_blockers": ["PYTHONPATH", "Railway deploy"]
+      "open_blockers": ["PYTHONPATH"]
     },
     "recent_decisions": [
       "2026-02-21: Decided to fix PYTHONPATH at project level, not system level",

@@ -203,6 +203,7 @@ infra/                        # Docker compose, entrypoint, bootstrap scripts
 
 | Container | Purpose | State | Access |
 |-----------|---------|-------|--------|
+| `betapp` | DNA Bet Engine (FastAPI/Uvicorn) | running | :19801 |
 | `claude-hub` | The Oracle — Claude Code in tmux | running | host network |
 | `key-locker` | Vault provisioner (run-once) | exited | — |
 | `marvin-skills` | HTTP probe server | running | :19800 |

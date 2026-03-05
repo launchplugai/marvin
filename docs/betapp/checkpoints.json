@@ -1,7 +1,8 @@
 {
-  "version": "1.0",
+  "version": "2.0",
   "generatedAt": "2026-03-05",
   "system": "DNA Bet Engine (BetApp)",
+  "approach": "Sand to studs. Verify foundation before adding floors. Each layer proves itself.",
 
   "checkpoints": [
     {
@@ -19,7 +20,7 @@
         "Test suite inventoried (38 unit + 3 e2e)"
       ],
       "evidence": [
-        "docs/betapp/system-reality-map.json — full SRM with 21 capabilities",
+        "docs/betapp/system-reality-map.json",
         "Route inventory: 80 endpoints across 10 router modules",
         "Pipeline: 17-stage evaluation pipeline mapped with status",
         "Protocol registry: 13 protocols (9 PRO, 4 ELITE) across 5 categories"
@@ -29,130 +30,230 @@
     },
 
     {
-      "checkpointId": "CP-S2-Pipeline-Integrity",
+      "checkpointId": "CP-S1.5-Schematics",
+      "sprint": "S1.5",
+      "name": "UI Schematics + Integration Plumbing Laid Down",
+      "status": "COMPLETE",
+      "criteria": [
+        "Every UI screen has a spec with layout zones, data contracts, and verification status",
+        "Every integration point between Marvin and BetApp is mapped",
+        "Build order defined: verify endpoints -> auth -> builder -> dashboard -> browse -> protocol",
+        "Anti-patterns documented (no more WORKING without proof)",
+        "Shared components identified (eval card, leg row, protocol badge, tier gate)"
+      ],
+      "evidence": [
+        "docs/designs/09-ui-schematics.md — 10 screen specs with data contracts",
+        "docs/designs/10-integration-plumbing.md — 5 pipe definitions with status",
+        "Build order: Layer 0 (verify) through Layer 7 (polish)",
+        "Verification checklist: 8 curl proofs required before any screen gets code"
+      ],
+      "deliverable": "docs/designs/09-ui-schematics.md + 10-integration-plumbing.md",
+      "completedAt": "2026-03-05"
+    },
+
+    {
+      "checkpointId": "CP-S2-Endpoint-Verification",
       "sprint": "S2",
+      "name": "Endpoint Verification (Layer 0)",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "curl /health returns 200 with real data",
+        "curl /leading-light/evaluate/text returns full evaluation (not stub)",
+        "curl /api/auth/login returns JWT (not placeholder)",
+        "curl /api/bets/history returns real bet objects",
+        "curl /api/v1/odds/games — determine if ODDS_API_KEY is configured",
+        "curl /api/protocols — determine if registry loads",
+        "curl /api/notifications — determine if notification system works",
+        "Each endpoint stamped VERIFIED / PLACEHOLDER / MISSING",
+        "ui_contract_v1.py output shape documented"
+      ],
+      "evidence": [],
+      "deliverable": "Updated SRM with VERIFIED/PLACEHOLDER/MISSING stamps per endpoint",
+      "blockers": [
+        "Need VPS access (Hostinger API token) to run curl proofs"
+      ],
+      "gateRule": "No UI screen work begins until its endpoints are VERIFIED"
+    },
+
+    {
+      "checkpointId": "CP-S3-Pipeline-Integrity",
+      "sprint": "S3",
       "name": "Pipeline Integrity Verified",
       "status": "NOT_STARTED",
       "criteria": [
-        "/app/evaluate POST returns structured response",
+        "/app/evaluate POST returns structured response matching ui_contract shape",
         "Pipeline calls core evaluation (not placeholder)",
         "Sherlock hook fires when enabled",
         "DNA contract validator runs on every evaluation",
-        "Tier-based filtering applied",
-        "Response schema matches DNA contract"
+        "Tier-based filtering applied (FREE sees less than PRO)",
+        "Response schema matches 09-ui-schematics.md Section 2.5 data contract"
       ],
       "evidence": [],
-      "deliverable": "stable evaluation endpoint",
+      "deliverable": "Stable evaluation endpoint with verified response shape",
       "blockers": [
-        "Need VPS access to test live endpoint",
-        "Need to verify pipeline.py has no placeholder bypass"
-      ]
+        "Depends on CP-S2 (endpoint verification)"
+      ],
+      "gateRule": "Builder screen (Layer 2) blocked until this passes"
     },
 
     {
-      "checkpointId": "CP-S3-Data-Sources",
-      "sprint": "S3",
-      "name": "Data Sources Connected",
-      "status": "NOT_STARTED",
-      "criteria": [
-        "Live odds connected (The Odds API)",
-        "NBA data pipeline working",
-        "Injury feed connected",
-        "Context providers returning real data"
-      ],
-      "evidence": [],
-      "deliverable": "live data endpoints returning real data",
-      "blockers": [
-        "ODDS_API_KEY status unknown",
-        "NBA scraper reliability unknown"
-      ]
-    },
-
-    {
-      "checkpointId": "CP-S4-Protocol-Engine",
+      "checkpointId": "CP-S4-Auth-Landing",
       "sprint": "S4",
-      "name": "Protocol Engine Functional",
+      "name": "Auth + Landing (UI Layer 1)",
       "status": "NOT_STARTED",
       "criteria": [
-        "Protocol registry loads all 13 protocols",
-        "At least one protocol executes with real data",
-        "Protocol artifacts pass DNA validator",
-        "API response includes triggeredProtocols",
-        "Tier gating works (PRO vs ELITE)"
+        "Landing redirects authed->dashboard, unauthed->auth",
+        "Auth screen renders login + register forms",
+        "Login returns JWT, stores in session",
+        "Register creates user, auto-logs in",
+        "Tier badge displays correctly"
       ],
       "evidence": [],
-      "deliverable": "protocol engine integrated into pipeline",
+      "deliverable": "Working auth flow gating all other screens",
       "blockers": [
-        "Pipeline stage 17 (protocol_engine) status UNKNOWN",
-        "Need to verify registry_loader works"
+        "Depends on CP-S2 auth endpoint being VERIFIED"
       ]
     },
 
     {
-      "checkpointId": "CP-S5-Protocol-Toggle",
+      "checkpointId": "CP-S5-Builder-Core",
       "sprint": "S5",
-      "name": "Protocol Toggle + Premium Layer",
+      "name": "Builder Screen (UI Layer 2 — THE product)",
       "status": "NOT_STARTED",
       "criteria": [
-        "UI toggle changes request dnaMode",
-        "CORE_ONLY vs CORE_PLUS_PROTOCOLS works",
-        "API contract: dnaMode, compareShadow fields"
+        "Builder screen renders with text input + tier selector",
+        "Submit calls /leading-light/evaluate/text",
+        "Result renders: grade, risk, legs, correlation, DNA verdict, sherlock",
+        "Response shape matches 09-ui-schematics.md Section 2.5 exactly",
+        "Tier gate shows upgrade prompt for locked features",
+        "Evaluation saved to history"
       ],
       "evidence": [],
-      "deliverable": "tier-gated protocol toggle"
+      "deliverable": "Core product screen — user can evaluate a parlay",
+      "blockers": [
+        "Depends on CP-S3 (pipeline integrity)"
+      ],
+      "gateRule": "This is the product. If we stop here, we have something useful."
     },
 
     {
-      "checkpointId": "CP-S6-Protocol-UI",
+      "checkpointId": "CP-S6-Dashboard-History",
       "sprint": "S6",
-      "name": "Protocol View UI",
+      "name": "Dashboard + History (UI Layer 3)",
       "status": "NOT_STARTED",
       "criteria": [
-        "Protocol screen displays triggered protocols",
-        "Shows evidence and fragility explanation",
-        "Shows Sherlock explanation"
+        "Dashboard shows stats row, recent evaluations, active bets",
+        "History shows paginated evaluation list with filters",
+        "Evaluation card component shared between dashboard and history",
+        "Click evaluation -> re-opens in builder"
       ],
       "evidence": [],
-      "deliverable": "protocol panel in UI"
+      "deliverable": "User can see their evaluation history and stats",
+      "blockers": [
+        "Depends on CP-S5 (builder must exist to generate history)"
+      ]
     },
 
     {
-      "checkpointId": "CP-S7-Compare-Engine",
+      "checkpointId": "CP-S7-Browse",
       "sprint": "S7",
-      "name": "Compare Engine Working",
+      "name": "Browse Screen (UI Layer 4)",
       "status": "NOT_STARTED",
       "criteria": [
-        "compareShadow mode logs both outputs",
-        "Database stores comparison",
-        "Analysis report shows accuracy delta"
+        "ODDS_API_KEY confirmed configured on VPS",
+        "Browse shows real games with real odds (not mock)",
+        "Sport filter works",
+        "Add-to-builder flow works (game legs pre-fill builder)",
+        "Fallback: if odds unavailable, show clear 'no live data' state"
       ],
       "evidence": [],
-      "deliverable": "comparison logging and reporting"
+      "deliverable": "Browse real games with live odds",
+      "blockers": [
+        "ODDS_API_KEY must be configured",
+        "Depends on CP-S5 (builder to receive selected games)"
+      ]
     },
 
     {
-      "checkpointId": "CP-S8-Intelligence-UX",
+      "checkpointId": "CP-S8-Protocol-Engine-Integration",
       "sprint": "S8",
-      "name": "Intelligence UX",
+      "name": "Protocol Engine in Pipeline",
       "status": "NOT_STARTED",
       "criteria": [
-        "Sherlock explanations improved",
-        "User profile adjusts messaging tone",
-        "Risk-averse vs aggressive messaging works"
+        "Pipeline stage 17 (protocol_engine) returns real data",
+        "Protocol registry loads all 13 protocols",
+        "At least fatigue_b2b, pace_shock, lineup_instability execute with real game data",
+        "Protocol artifacts pass DNA validator",
+        "Evaluation response includes triggeredProtocols array",
+        "Marvin PDC schema aligned with BetApp registry (Option B from 10-integration-plumbing.md)"
       ],
       "evidence": [],
-      "deliverable": "personalized intelligence messaging"
+      "deliverable": "Protocol engine integrated into evaluation pipeline",
+      "blockers": [
+        "BetApp pipeline stage 17 status UNKNOWN — must verify first"
+      ]
+    },
+
+    {
+      "checkpointId": "CP-S9-Protocol-UI",
+      "sprint": "S9",
+      "name": "Protocol View Screen (UI Layer 5)",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "Protocol screen renders per 09-ui-schematics.md Section 2.7",
+        "Shows triggered protocols with evidence, impact, explanation",
+        "Shows aggregate impact (stability modifier, fragility delta)",
+        "DNA mode toggle (CORE_ONLY vs CORE_PLUS_PROTOCOLS)",
+        "Tier gate: PRO sees 9 protocols, ELITE sees all 13",
+        "Protocol badge component reusable in builder result"
+      ],
+      "evidence": [],
+      "deliverable": "Protocol deep-dive screen",
+      "blockers": [
+        "Depends on CP-S8 (protocol engine must return real data)"
+      ]
+    },
+
+    {
+      "checkpointId": "CP-S10-Polish",
+      "sprint": "S10",
+      "name": "Notifications + Onboarding + Polish (UI Layers 6-7)",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "Notification panel slides out with real alerts",
+        "Onboarding flow for first-visit users",
+        "Sherlock explanations use user preference (risk profile)",
+        "All 10 screens pass Playwright e2e",
+        "No placeholder data anywhere"
+      ],
+      "evidence": [],
+      "deliverable": "Complete, polished UI",
+      "blockers": [
+        "All previous checkpoints"
+      ]
     }
   ],
 
   "sprintTimeline": [
     {"sprint": "S1", "name": "System Reality Audit", "status": "COMPLETE", "goal": "Stop guessing what works"},
-    {"sprint": "S2", "name": "Pipeline Integrity", "status": "NOT_STARTED", "goal": "Make evaluation pipeline deterministic"},
-    {"sprint": "S3", "name": "Data Source Integrity", "status": "NOT_STARTED", "goal": "Remove stale or fake data"},
-    {"sprint": "S4", "name": "Protocol Engine Foundation", "status": "NOT_STARTED", "goal": "Add contextual intelligence"},
-    {"sprint": "S5", "name": "Protocol Toggle + Premium", "status": "NOT_STARTED", "goal": "Feature gating for Pro tier"},
-    {"sprint": "S6", "name": "Protocol View UI", "status": "NOT_STARTED", "goal": "Show intelligence to users"},
-    {"sprint": "S7", "name": "Compare Engine", "status": "NOT_STARTED", "goal": "Prove protocol engine works"},
-    {"sprint": "S8", "name": "Intelligence UX", "status": "NOT_STARTED", "goal": "Make the system feel smart"}
-  ]
+    {"sprint": "S1.5", "name": "UI Schematics + Plumbing", "status": "COMPLETE", "goal": "Blueprint before building"},
+    {"sprint": "S2", "name": "Endpoint Verification", "status": "NOT_STARTED", "goal": "Stamp every endpoint VERIFIED/PLACEHOLDER/MISSING"},
+    {"sprint": "S3", "name": "Pipeline Integrity", "status": "NOT_STARTED", "goal": "Make evaluation deterministic"},
+    {"sprint": "S4", "name": "Auth + Landing", "status": "NOT_STARTED", "goal": "Gate the front door"},
+    {"sprint": "S5", "name": "Builder (Core Product)", "status": "NOT_STARTED", "goal": "The product IS evaluation"},
+    {"sprint": "S6", "name": "Dashboard + History", "status": "NOT_STARTED", "goal": "Show what you've built"},
+    {"sprint": "S7", "name": "Browse + Live Odds", "status": "NOT_STARTED", "goal": "Real games, real data"},
+    {"sprint": "S8", "name": "Protocol Engine Integration", "status": "NOT_STARTED", "goal": "Contextual intelligence in pipeline"},
+    {"sprint": "S9", "name": "Protocol View UI", "status": "NOT_STARTED", "goal": "Show intelligence to users"},
+    {"sprint": "S10", "name": "Notifications + Polish", "status": "NOT_STARTED", "goal": "Last coat of paint"}
+  ],
+
+  "buildPhilosophy": {
+    "rule1": "No screen without a verified endpoint",
+    "rule2": "No WORKING label without a curl proof",
+    "rule3": "Each sprint ships standalone value",
+    "rule4": "Builder (S5) is the product — everything else is supporting",
+    "rule5": "Protocol UI (S9) is blocked until protocol engine returns real data (S8)",
+    "rule6": "Sand to studs — verify foundation before adding floors"
+  }
 }

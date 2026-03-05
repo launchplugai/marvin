@@ -1,0 +1,158 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-03-05",
+  "system": "DNA Bet Engine (BetApp)",
+
+  "checkpoints": [
+    {
+      "checkpointId": "CP-S1-Reality-Audit",
+      "sprint": "S1",
+      "name": "System Reality Audit Complete",
+      "status": "COMPLETE",
+      "criteria": [
+        "SRM created with all capabilities inventoried",
+        "All routes inventoried (80 total)",
+        "All UI screens mapped (10 screens)",
+        "All pipeline modules listed (17 stages)",
+        "Protocol registry documented (13 protocols)",
+        "Data sources cataloged (4 sources)",
+        "Test suite inventoried (38 unit + 3 e2e)"
+      ],
+      "evidence": [
+        "docs/betapp/system-reality-map.json — full SRM with 21 capabilities",
+        "Route inventory: 80 endpoints across 10 router modules",
+        "Pipeline: 17-stage evaluation pipeline mapped with status",
+        "Protocol registry: 13 protocols (9 PRO, 4 ELITE) across 5 categories"
+      ],
+      "deliverable": "docs/betapp/system-reality-map.json",
+      "completedAt": "2026-03-05"
+    },
+
+    {
+      "checkpointId": "CP-S2-Pipeline-Integrity",
+      "sprint": "S2",
+      "name": "Pipeline Integrity Verified",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "/app/evaluate POST returns structured response",
+        "Pipeline calls core evaluation (not placeholder)",
+        "Sherlock hook fires when enabled",
+        "DNA contract validator runs on every evaluation",
+        "Tier-based filtering applied",
+        "Response schema matches DNA contract"
+      ],
+      "evidence": [],
+      "deliverable": "stable evaluation endpoint",
+      "blockers": [
+        "Need VPS access to test live endpoint",
+        "Need to verify pipeline.py has no placeholder bypass"
+      ]
+    },
+
+    {
+      "checkpointId": "CP-S3-Data-Sources",
+      "sprint": "S3",
+      "name": "Data Sources Connected",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "Live odds connected (The Odds API)",
+        "NBA data pipeline working",
+        "Injury feed connected",
+        "Context providers returning real data"
+      ],
+      "evidence": [],
+      "deliverable": "live data endpoints returning real data",
+      "blockers": [
+        "ODDS_API_KEY status unknown",
+        "NBA scraper reliability unknown"
+      ]
+    },
+
+    {
+      "checkpointId": "CP-S4-Protocol-Engine",
+      "sprint": "S4",
+      "name": "Protocol Engine Functional",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "Protocol registry loads all 13 protocols",
+        "At least one protocol executes with real data",
+        "Protocol artifacts pass DNA validator",
+        "API response includes triggeredProtocols",
+        "Tier gating works (PRO vs ELITE)"
+      ],
+      "evidence": [],
+      "deliverable": "protocol engine integrated into pipeline",
+      "blockers": [
+        "Pipeline stage 17 (protocol_engine) status UNKNOWN",
+        "Need to verify registry_loader works"
+      ]
+    },
+
+    {
+      "checkpointId": "CP-S5-Protocol-Toggle",
+      "sprint": "S5",
+      "name": "Protocol Toggle + Premium Layer",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "UI toggle changes request dnaMode",
+        "CORE_ONLY vs CORE_PLUS_PROTOCOLS works",
+        "API contract: dnaMode, compareShadow fields"
+      ],
+      "evidence": [],
+      "deliverable": "tier-gated protocol toggle"
+    },
+
+    {
+      "checkpointId": "CP-S6-Protocol-UI",
+      "sprint": "S6",
+      "name": "Protocol View UI",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "Protocol screen displays triggered protocols",
+        "Shows evidence and fragility explanation",
+        "Shows Sherlock explanation"
+      ],
+      "evidence": [],
+      "deliverable": "protocol panel in UI"
+    },
+
+    {
+      "checkpointId": "CP-S7-Compare-Engine",
+      "sprint": "S7",
+      "name": "Compare Engine Working",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "compareShadow mode logs both outputs",
+        "Database stores comparison",
+        "Analysis report shows accuracy delta"
+      ],
+      "evidence": [],
+      "deliverable": "comparison logging and reporting"
+    },
+
+    {
+      "checkpointId": "CP-S8-Intelligence-UX",
+      "sprint": "S8",
+      "name": "Intelligence UX",
+      "status": "NOT_STARTED",
+      "criteria": [
+        "Sherlock explanations improved",
+        "User profile adjusts messaging tone",
+        "Risk-averse vs aggressive messaging works"
+      ],
+      "evidence": [],
+      "deliverable": "personalized intelligence messaging"
+    }
+  ],
+
+  "sprintTimeline": [
+    {"sprint": "S1", "name": "System Reality Audit", "status": "COMPLETE", "goal": "Stop guessing what works"},
+    {"sprint": "S2", "name": "Pipeline Integrity", "status": "NOT_STARTED", "goal": "Make evaluation pipeline deterministic"},
+    {"sprint": "S3", "name": "Data Source Integrity", "status": "NOT_STARTED", "goal": "Remove stale or fake data"},
+    {"sprint": "S4", "name": "Protocol Engine Foundation", "status": "NOT_STARTED", "goal": "Add contextual intelligence"},
+    {"sprint": "S5", "name": "Protocol Toggle + Premium", "status": "NOT_STARTED", "goal": "Feature gating for Pro tier"},
+    {"sprint": "S6", "name": "Protocol View UI", "status": "NOT_STARTED", "goal": "Show intelligence to users"},
+    {"sprint": "S7", "name": "Compare Engine", "status": "NOT_STARTED", "goal": "Prove protocol engine works"},
+    {"sprint": "S8", "name": "Intelligence UX", "status": "NOT_STARTED", "goal": "Make the system feel smart"}
+  ]
+}

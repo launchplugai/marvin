@@ -216,5 +216,28 @@ class TaskQueue:
             "total": sum(counts.values()),
         }
 
+    def recent(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get recent tasks across all statuses, newest first."""
+        rows = self.conn.execute(
+            "SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "message": r["message"][:120],
+                "intent": r["intent"],
+                "project": r["project"],
+                "priority": r["priority"],
+                "status": r["status"],
+                "tier": r["tier"],
+                "attempts": r["attempts"],
+                "error": r["error"],
+                "created_at": r["created_at"],
+                "started_at": r["started_at"],
+                "completed_at": r["completed_at"],
+            }
+            for r in rows
+        ]
+
     def close(self):
         self.conn.close()

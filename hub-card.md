@@ -59,10 +59,12 @@ elif .env file exists in repo root:
     → Manage VPS via Hostinger REST API (curl)
 
 else:
-    → COLD START — no tokens available
-    → Check for .env.example → tell user to create .env
-    → Without tokens you CANNOT manage the VPS
-    → You CAN still work on the codebase locally
+    → NO LOCAL TOKENS — try to retrieve from key-locker:
+    → GET .../docker/key-locker → extract tokens from printf line
+    → Write to .env using .env.example template
+    → If no token available to call API, ask user to provide one
+    → Tokens source of truth: key-locker compose on the VPS (locker-vault)
+    → Without tokens you CAN still work on the codebase locally
 ```
 
 ## Quick Start for New Sessions

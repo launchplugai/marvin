@@ -1,0 +1,72 @@
+services:
+  control-api:
+    image: python:3.12-slim
+    container_name: marvin-control-api
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      - PYTHONPATH=/app/src
+      - CONTROL_API_HOST=0.0.0.0
+      - CONTROL_API_PORT=8787
+      - CONTROL_API_TOKEN=${CONTROL_API_TOKEN:-}
+      - CONTROL_PLANE_DIR=/control
+    command: ["python", "-m", "marvin.control_server"]
+    ports:
+      - "8787:8787"
+    volumes:
+      - ../src:/app/src:ro
+      - marvin-control:/control
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  codex-brain:
+    build:
+      context: .
+      dockerfile: codex-brain.Dockerfile
+    container_name: codex-brain
+    restart: unless-stopped
+    environment:
+      - CONTROL_PLANE_DIR=/control
+      - CONTROL_POLL_SECONDS=2
+      - CODEX_COMMAND=${CODEX_COMMAND:-codex}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    command: ["python", "/app/codex-worker.py"]
+    volumes:
+      - ./codex-worker.py:/app/codex-worker.py:ro
+      - marvin-control:/control
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    ports:
+      - "3000:8080"
+    volumes:
+      - webui-data:/app/backend/data
+
+  openclaw:
+    image: python:3.12-slim
+    container_name: openclaw
+    restart: unless-stopped
+    command: ["bash", "-lc", "while true; do sleep 3600; done"]
+
+volumes:
+  marvin-control:
+    driver: local
+  ollama-data:
+    driver: local
+  webui-data:
+    driver: local

@@ -108,6 +108,22 @@ python -m marvin.main --config config/default.yaml
 curl http://localhost:8000/health
 ```
 
+
+## Current Implementation
+
+This redesign ships a working orchestration loop under `src/marvin`:
+- classify request intent in Lobby
+- check cache using project state signature
+- route to the target department
+- synthesize response and optionally cache it
+- return a full execution chain in the envelope
+
+Run it locally:
+
+```bash
+PYTHONPATH=src python -m marvin.main "What's the status?" --project .
+```
+
 ## Key Principles
 
 1. **Cache First** — Every call is an opportunity to avoid the next one

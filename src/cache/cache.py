@@ -187,7 +187,6 @@ class CacheLayer:
                 # Update stats
                 self.stats["hits"] += 1
                 tokens = row["tokens_saved"] or 0
-                self.stats["tokens_saved"] += tokens
                 
                 # Log metric
                 self._log_metric("cache_hit", intent, project, "exact_match", tokens)
@@ -195,7 +194,7 @@ class CacheLayer:
                 return {
                     "value": json.loads(row["response"]),
                     "metadata": json.loads(row["metadata"] or "{}"),
-                    "hit_count": row["hit_count"],
+                    "hit_count": row["hit_count"] + 1,
                     "age_seconds": now - row["created_at"],
                     "tokens_saved": tokens,
                 }

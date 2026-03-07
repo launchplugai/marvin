@@ -1,302 +1,187 @@
 #!/usr/bin/env python3
-"""
-Lobby Router — Intent Classifier
-Phase 1 Day 3
+"""Lobby intent classifier with keyword-first routing and optional LLM fallback."""
 
-Uses Groq Llama 8B to classify messages into intent types.
-
-Fast, cheap, accurate enough for routing decisions.
-Fallback to keyword-based classification if LLM fails.
-"""
+from __future__ import annotations
 
 import json
 import logging
-import requests
 import os
-from typing import Tuple, Optional
+import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class IntentType(Enum):
-    """Valid intent classifications."""
-    STATUS_CHECK = "status_check"      # What's the current state?
-    HOW_TO = "how_to"                   # How do I do X?
-    CODE_REVIEW = "code_review"         # Review my code
-    DEBUGGING = "debugging"             # Fix this error
-    FEATURE_WORK = "feature_work"       # Build X feature
-    TRIVIAL = "trivial"                 # Simple acknowledgement
-    UNKNOWN = "unknown"                 # Doesn't fit
+    STATUS_CHECK = "status_check"
+    HOW_TO = "how_to"
+    CODE_REVIEW = "code_review"
+    DEBUGGING = "debugging"
+    FEATURE_WORK = "feature_work"
+    TRIVIAL = "trivial"
+    UNKNOWN = "unknown"
 
 
 @dataclass
 class Classification:
-    """Result of intent classification."""
-    intent: str  # One of IntentType values
-    confidence: float  # 0.0-1.0
-    method: str  # "keyword" or "llm"
+    intent: str
+    confidence: float
+    method: str
     cacheable: bool
-    ttl: int  # seconds
+    ttl: Optional[int]
     reason: str
 
 
 class LobbyClassifier:
-    """
-    Message intent classifier using Groq 8B.
-    
-    Design:
-    1. Fast path: keyword matching (no API call)
-    2. Slow path: LLM classification (if no keyword match)
-    3. Fallback: hardcoded rules (if LLM fails)
-    4. Result: JSON envelope with intent + metadata
-    """
-    
-    def __init__(self, groq_api_key: str = None, model: str = "llama-3.1-8b-instant"):
-        """Initialize classifier with Groq API."""
-        if groq_api_key is None:
-            groq_api_key = os.environ.get("GROQ_API_KEY")
-        
-        self.api_key = groq_api_key
+    """Classifies incoming messages into routing-friendly intent buckets."""
+
+    def __init__(self, groq_api_key: str | None = None, model: str = "llama-3.1-8b-instant"):
+        self.api_key = groq_api_key or os.environ.get("GROQ_API_KEY")
         self.model = model
         self.groq_url = "https://api.groq.com/openai/v1/chat/completions"
-        
-        # Intent configuration
-        self.intents = {
+
+        self.intents: Dict[IntentType, Dict[str, object]] = {
             IntentType.STATUS_CHECK: {
                 "keywords": [
-                    "status", "running", "health", "uptime", "working", "ok",
-                    "how is", "what's the", "is the", "health check", "alive"
+                    "status", "running", "health", "uptime", "working", "alive", "what's the status", "how is", "is the",
                 ],
                 "cacheable": True,
                 "ttl": 60,
             },
             IntentType.HOW_TO: {
-                "keywords": [
-                    "how do i", "how to", "what's the command", "how can i",
-                    "guide", "tutorial", "documentation", "help with"
-                ],
+                "keywords": ["how do i", "how to", "guide", "tutorial", "command", "documentation"],
                 "cacheable": True,
                 "ttl": 3600,
             },
             IntentType.CODE_REVIEW: {
-                "keywords": [
-                    "review", "check this", "look at", "pull request", "pr",
-                    "code review", "audit", "feedback on code"
-                ],
+                "keywords": ["review", "pull request", "pr", "feedback on code", "audit"],
                 "cacheable": False,
                 "ttl": None,
             },
             IntentType.DEBUGGING: {
-                "keywords": [
-                    "error", "broken", "fix", "debug", "why", "not working",
-                    "issue", "bug", "failed", "crash", "exception"
-                ],
+                "keywords": ["error", "broken", "fix", "debug", "issue", "bug", "failed", "crash", "crashed"],
                 "cacheable": False,
                 "ttl": None,
             },
             IntentType.FEATURE_WORK: {
-                "keywords": [
-                    "build", "add", "create", "implement", "develop",
-                    "new feature", "task", "epic", "story"
-                ],
+                "keywords": ["build", "add", "create", "implement", "new feature", "task", "epic"],
                 "cacheable": False,
                 "ttl": None,
             },
             IntentType.TRIVIAL: {
-                "keywords": [
-                    "thanks", "thank you", "ok", "cool", "nice", "good job",
-                    "got it", "understood", "acknowledged"
-                ],
+                "keywords": ["thanks", "thank you", "cool", "nice", "got it", "understood"],
                 "cacheable": True,
                 "ttl": 86400,
             },
-            IntentType.UNKNOWN: {
-                "keywords": [],
-                "cacheable": False,
-                "ttl": None,
-            },
+            IntentType.UNKNOWN: {"keywords": [], "cacheable": False, "ttl": None},
         }
-    
+
     def classify(self, message: str) -> Classification:
-        """
-        Classify a message into an intent type.
-        
-        Args:
-            message: The user message
-        
-        Returns:
-            Classification with intent, confidence, method, cacheable, ttl
-        """
-        # Phase 1: Fast keyword matching
         keyword_result = self._classify_by_keywords(message)
         if keyword_result:
             return keyword_result
-        
-        # Phase 2: LLM classification (if no keyword match)
+
         llm_result = self._classify_by_llm(message)
         if llm_result:
             return llm_result
-        
-        # Phase 3: Fallback
+
         return self._fallback_classification(message)
-    
+
     def _classify_by_keywords(self, message: str) -> Optional[Classification]:
-        """Try to classify using keyword matching (fast, no API)."""
         msg_lower = message.lower()
-        
+        best_match: Optional[Classification] = None
+        best_score = 0
+
         for intent, config in self.intents.items():
             if intent == IntentType.UNKNOWN:
                 continue
-            
-            # Check if any keyword matches
-            for keyword in config["keywords"]:
-                if keyword in msg_lower:
-                    return Classification(
-                        intent=intent.value,
-                        confidence=0.95,  # High confidence for keyword matches
-                        method="keyword",
-                        cacheable=config["cacheable"],
-                        ttl=config["ttl"],
-                        reason=f"Matched keyword: '{keyword}'",
-                    )
-        
-        return None
-    
+
+            score = 0
+            matched_keyword = None
+            for keyword in config["keywords"]:  # type: ignore[index]
+                pattern = rf"\b{re.escape(keyword)}\b"
+                if re.search(pattern, msg_lower):
+                    score += max(1, len(keyword.split()))
+                    matched_keyword = keyword
+
+            if score > best_score and matched_keyword:
+                best_score = score
+                best_match = Classification(
+                    intent=intent.value,
+                    confidence=min(0.99, 0.9 + (score * 0.02)),
+                    method="keyword",
+                    cacheable=bool(config["cacheable"]),
+                    ttl=config["ttl"],  # type: ignore[index]
+                    reason=f"Matched keyword: '{matched_keyword}'",
+                )
+
+        return best_match
+
     def _classify_by_llm(self, message: str) -> Optional[Classification]:
-        """Use Groq 8B for semantic classification."""
         if not self.api_key:
-            logger.warning("No Groq API key, skipping LLM classification")
             return None
-        
-        prompt = f"""You are a message classifier. Classify this message into ONE category ONLY.
 
-Categories and examples:
-- status_check: "What's the status?" "Is it running?" "Health check?" "Uptime?" "How is X?"
-- how_to: "How do I run tests?" "What's the command?" "Guide to X?" "Documentation?"
-- code_review: "Review my code" "Check this PR" "Feedback on this"
-- debugging: "Fix this error" "Why is it broken?" "Debug this issue"
-- feature_work: "Build X feature" "Add Y" "Implement Z" "Task: do X"
-- trivial: "Thanks!" "Got it" "Cool" "Nice job"
-- unknown: Doesn't fit above
-
-Message: "{message}"
-
-Respond with ONLY the category name in lowercase (status_check, how_to, etc), no explanation."""
+        prompt = (
+            "Classify into exactly one intent: status_check, how_to, code_review, debugging, feature_work, trivial, unknown. "
+            "Return JSON only: {\"intent\": str, \"confidence\": float, \"reason\": str}."
+        )
+        payload = {
+            "model": self.model,
+            "temperature": 0,
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": message},
+            ],
+        }
 
         try:
-            response = requests.post(
+            req = urllib.request.Request(
                 self.groq_url,
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 20,
-                    "temperature": 0.1,  # Low temp for consistency
+                method="POST",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
                 },
-                timeout=10,
             )
-            
-            if response.status_code != 200:
-                logger.warning(f"Groq API error: {response.status_code}")
-                return None
-            
-            data = response.json()
-            intent_str = data["choices"][0]["message"]["content"].strip().lower()
-            
-            # Validate intent
-            valid_intents = [i.value for i in IntentType]
-            if intent_str not in valid_intents:
-                logger.warning(f"Invalid intent from LLM: {intent_str}")
-                return None
-            
-            intent = IntentType(intent_str)
-            config = self.intents[intent]
-            
-            return Classification(
-                intent=intent.value,
-                confidence=0.85,  # LLM classification
-                method="llm",
-                cacheable=config["cacheable"],
-                ttl=config["ttl"],
-                reason="Groq 8B semantic classification",
-            )
-            
-        except requests.Timeout:
-            logger.warning("Groq API timeout")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+            content = body["choices"][0]["message"]["content"]
+            parsed = json.loads(content)
+        except (urllib.error.URLError, TimeoutError, KeyError, json.JSONDecodeError, ValueError) as exc:
+            logger.warning("LLM classification failed: %s", exc)
             return None
-        except Exception as e:
-            logger.error(f"LLM classification error: {e}")
-            return None
-    
-    def _fallback_classification(self, message: str) -> Classification:
-        """Fallback when both keyword and LLM fail."""
-        logger.warning("Falling back to hardcoded classification")
-        
-        # Very simple heuristics
-        msg_lower = message.lower()
-        
-        if len(message.split()) < 5:
-            # Short messages → likely trivial
-            return Classification(
-                intent=IntentType.TRIVIAL.value,
-                confidence=0.5,
-                method="fallback",
-                cacheable=True,
-                ttl=86400,
-                reason="Short message (fallback)",
-            )
-        
-        if any(word in msg_lower for word in ["error", "fix", "broken"]):
-            return Classification(
-                intent=IntentType.DEBUGGING.value,
-                confidence=0.6,
-                method="fallback",
-                cacheable=False,
-                ttl=None,
-                reason="Contains error keywords (fallback)",
-            )
-        
-        # Default
+
+        intent_value = parsed.get("intent", IntentType.UNKNOWN.value)
+        intent_type = next((i for i in IntentType if i.value == intent_value), IntentType.UNKNOWN)
+        config = self.intents[intent_type]
+
+        return Classification(
+            intent=intent_type.value,
+            confidence=float(parsed.get("confidence", 0.6)),
+            method="llm",
+            cacheable=bool(config["cacheable"]),
+            ttl=config["ttl"],  # type: ignore[index]
+            reason=str(parsed.get("reason", "LLM classification")),
+        )
+
+    def _fallback_classification(self, _message: str) -> Classification:
         return Classification(
             intent=IntentType.UNKNOWN.value,
-            confidence=0.0,
+            confidence=0.5,
             method="fallback",
             cacheable=False,
             ttl=None,
-            reason="Could not classify (fallback)",
+            reason="No keyword match and LLM unavailable",
         )
-    
+
     def get_stats(self) -> dict:
-        """Get classifier statistics."""
         return {
             "model": self.model,
             "api_key_configured": bool(self.api_key),
-            "intents_available": len(self.intents),
+            "intents_available": len(IntentType),
         }
-
-
-# Test
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    
-    classifier = LobbyClassifier()
-    
-    test_messages = [
-        "What's the status of BetApp?",
-        "How do I run the test suite?",
-        "Review my code in this PR",
-        "The app keeps crashing with error 500",
-        "Build the dashboard feature",
-        "Thanks!",
-        "Blah blah random stuff",
-    ]
-    
-    print("\n🎯 LOBBY CLASSIFIER TEST\n")
-    for msg in test_messages:
-        result = classifier.classify(msg)
-        print(f"Message: {msg}")
-        print(f"  Intent: {result.intent} (confidence: {result.confidence}, method: {result.method})")
-        print(f"  Cacheable: {result.cacheable} (TTL: {result.ttl})")
-        print(f"  Reason: {result.reason}\n")

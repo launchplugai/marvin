@@ -74,3 +74,8 @@ curl -X POST -H "Authorization: Bearer $CONTROL_API_TOKEN" \
 - harden auth (mTLS or signed tokens) and rate-limit control API
 - persist instruction/result audit trail in SQLite/Postgres
 - replace queue polling with Redis or NATS event bus
+
+
+## Extended operator guide
+
+- See `SYSTEM_OPERATIONS.md` for full operator, model-bootstrap (strap), monitoring, and proof-of-work procedures.

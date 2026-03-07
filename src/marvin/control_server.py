@@ -6,7 +6,7 @@ import json
 import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from marvin.control_plane import ControlPlane
 
@@ -37,9 +37,21 @@ class ControlHandler(BaseHTTPRequestHandler):
             _json(self, HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
             return
 
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+
         if path == "/health":
             _json(self, HTTPStatus.OK, {"ok": True, "service": "marvin-control"})
+            return
+
+        if path == "/metrics":
+            _json(self, HTTPStatus.OK, PLANE.get_metrics())
+            return
+
+        if path == "/results":
+            limit = int(query.get("limit", ["20"])[0])
+            _json(self, HTTPStatus.OK, PLANE.list_recent_results(limit=limit))
             return
 
         if path == "/containers":

@@ -21,6 +21,7 @@ def test_enqueue_and_read_status(tmp_path):
     status = plane.get_instruction_status(created["instruction_id"])
     assert status["status"] == "queued"
     assert status["instruction"] == "do thing"
+    assert status["token_estimate_in"] >= 1
 
 
 def test_list_containers_parses_json(monkeypatch, tmp_path):
@@ -42,3 +43,28 @@ def test_container_action_rejects_unknown(tmp_path):
     plane = ControlPlane(str(tmp_path))
     response = plane.container_action("ollama", "destroy")
     assert response["ok"] is False
+
+
+def test_metrics_aggregate(tmp_path):
+    plane = ControlPlane(str(tmp_path))
+    created = plane.enqueue_instruction("do thing", mode="shell")
+
+    result_file = Path(tmp_path) / "results" / f"{created['instruction_id']}.json"
+    result_file.write_text(
+        json.dumps(
+            {
+                **created,
+                "status": "completed",
+                "duration_seconds": 2.5,
+                "token_estimate_in": 3,
+                "token_estimate_out": 7,
+            }
+        )
+    )
+    (Path(tmp_path) / "inbox" / f"{created['instruction_id']}.json").unlink()
+
+    metrics = plane.get_metrics()
+    assert metrics["processed"] == 1
+    assert metrics["completed"] == 1
+    assert metrics["token_estimate_in"] == 3
+    assert metrics["token_estimate_out"] == 7

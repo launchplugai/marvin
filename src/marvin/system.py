@@ -9,6 +9,7 @@ from cache.cache import CacheLayer
 from cache.key_generator import CacheKeyGenerator
 from lobby.classifier import LobbyClassifier
 from marvin.transmission import EnvelopeFactory, append_execution_step
+from marvin.vps import HostingerVPSClient
 
 
 class MarvinSystem:
@@ -17,10 +18,12 @@ class MarvinSystem:
         classifier: LobbyClassifier | None = None,
         cache: CacheLayer | None = None,
         keygen: CacheKeyGenerator | None = None,
+        vps_client: HostingerVPSClient | None = None,
     ):
         self.classifier = classifier or LobbyClassifier()
         self.cache = cache or CacheLayer()
         self.keygen = keygen or CacheKeyGenerator()
+        self.vps_client = vps_client or HostingerVPSClient.from_env()
 
     def handle(self, message: str, project: str = ".") -> Dict[str, Any]:
         classification = self.classifier.classify(message)
@@ -68,14 +71,15 @@ class MarvinSystem:
     def close(self) -> None:
         self.cache.close()
 
-    @staticmethod
-    def _dispatch(department: str, intent: str, message: str) -> Dict[str, Any]:
+    def _dispatch(self, department: str, intent: str, message: str) -> Dict[str, Any]:
         if intent == "status_check":
+            vps_hint = self._maybe_attach_vps_status(message)
             return {
                 "summary": "System operational.",
                 "department": department,
                 "intent": intent,
                 "next_action": "Continue monitoring.",
+                "vps": vps_hint,
             }
         if intent == "how_to":
             return {
@@ -89,4 +93,24 @@ class MarvinSystem:
             "department": department,
             "intent": intent,
             "next_action": f"Analyze request: {message[:120]}",
+        }
+
+    def _maybe_attach_vps_status(self, message: str) -> Dict[str, Any]:
+        if not self.vps_client:
+            return {"configured": False, "note": "Set HOSTINGER_API_TOKEN to enable VPS status checks."}
+
+        lowered = message.lower()
+        if not any(k in lowered for k in ("vps", "hostinger", "server", "container", "status")):
+            return {"configured": True, "queried": False}
+
+        snapshot = self.vps_client.get_status_snapshot()
+        if snapshot.get("ok"):
+            return {"configured": True, "queried": True, "ok": True, "data": snapshot.get("data")}
+
+        return {
+            "configured": True,
+            "queried": True,
+            "ok": False,
+            "error": snapshot.get("error"),
+            "details": snapshot.get("details"),
         }

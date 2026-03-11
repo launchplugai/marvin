@@ -9,13 +9,17 @@ mkdir -p "$P"
   echo "https://x-access-token:${GH_TOKEN}@github.com" > /root/.git-credentials
 }
 
-# 2. Clone repos
-clone_if_missing() {
-  [ ! -d "$P/$2/.git" ] && git clone "https://github.com/$1.git" "$P/$2" 2>/dev/null && echo "Cloned $2" || echo "Repo $2 already present"
+# 2. Clone or pull repos
+clone_or_pull() {
+  if [ ! -d "$P/$2/.git" ]; then
+    git clone "https://github.com/$1.git" "$P/$2" 2>/dev/null && echo "Cloned $2"
+  else
+    (cd "$P/$2" && git pull --ff-only origin HEAD 2>/dev/null && echo "Pulled latest for $2") || echo "Repo $2 up to date"
+  fi
 }
-clone_if_missing "launchplugai/claude-hub" "claude-hub"
-clone_if_missing "launchplugai/BetApp" "BetApp"
-clone_if_missing "launchplugai/marvin" "marvin"
+clone_or_pull "launchplugai/claude-hub" "claude-hub"
+clone_or_pull "launchplugai/BetApp" "BetApp"
+clone_or_pull "launchplugai/marvin" "marvin"
 
 # 3. CLAUDE.md
 [ -f /vault/CLAUDE.md ] && cp /vault/CLAUDE.md "$P/CLAUDE.md" && echo "CLAUDE.md synced"

@@ -1,0 +1,932 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-03-05",
+  "system": "DNA Bet Engine (BetApp)",
+  "repo": "launchplugai/BetApp",
+  "deployment": {
+    "url": "http://187.77.211.80:19801",
+    "runtime": "Python 3.12 / FastAPI / Uvicorn",
+    "container": "betapp",
+    "port": 19801
+  },
+
+  "capabilities": [
+    {
+      "capabilityId": "cap_evaluation_pipeline",
+      "name": "Evaluation Pipeline",
+      "intent": "Single entry point for all parlay/bet evaluation. Parses input, calls core evaluation, applies context, sherlock, explainability, and DNA contracts.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/pipeline.py - imports core.evaluation, context, alerts, sherlock, explainability, DNA validators. 34K tokens of real logic.",
+      "files": ["app/pipeline.py", "app/airlock.py"],
+      "sprintLayer": {
+        "sprintId": "S2-Pipeline",
+        "phase": "integrity",
+        "priority": "HIGH"
+      },
+      "checkpoint": {
+        "name": "Pipeline Integrity Verified",
+        "criteria": [
+          "/app/evaluate POST returns structured response",
+          "pipeline calls core evaluation (not placeholder)",
+          "sherlock hook fires when enabled",
+          "DNA contract validator runs on every evaluation",
+          "tier-based filtering applied"
+        ],
+        "proof": [
+          "curl POST /app/evaluate with sample parlay",
+          "unit tests covering pipeline stages"
+        ]
+      },
+      "tasks": [
+        "verify full pipeline execution end-to-end",
+        "confirm no placeholder/bypass logic remains",
+        "validate response schema matches DNA contract"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_core_evaluation",
+      "name": "DNA Matrix Core Evaluation",
+      "intent": "Core parlay evaluation engine: reducer -> correlation -> DNA enforcement -> risk inductor -> suggestions.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "dna-matrix/core/evaluation.py - real engine with EvaluationResponse, evaluate_parlay(). Imports parlay_reducer, correlation_engine, dna_enforcement, risk_inductor, suggestion_engine.",
+      "files": [
+        "dna-matrix/core/evaluation.py",
+        "dna-matrix/core/parlay_reducer.py",
+        "dna-matrix/core/correlation_engine.py",
+        "dna-matrix/core/dna_enforcement.py",
+        "dna-matrix/core/risk_inductor.py",
+        "dna-matrix/core/suggestion_engine.py",
+        "dna-matrix/core/fragility_engine.py",
+        "dna-matrix/core/alert_engine.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S2-Pipeline",
+        "phase": "integrity",
+        "priority": "CRITICAL"
+      },
+      "checkpoint": {
+        "name": "Core Evaluation Deterministic",
+        "criteria": [
+          "evaluate_parlay() returns complete EvaluationResponse",
+          "reducer builds parlay state correctly",
+          "correlation engine detects correlated legs",
+          "DNA enforcement applies profile rules",
+          "risk inductor assigns correct level"
+        ],
+        "proof": [
+          "dna-matrix/tests/ pass",
+          "deterministic output for same input"
+        ]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_protocol_engine",
+      "name": "Protocol Engine",
+      "intent": "Contextual intelligence layer with 13 protocols (fatigue, pace shock, injury shadow, sharp movement, etc). Registry-driven, tier-gated.",
+      "tier": "PRO",
+      "status": "WORKING",
+      "evidence": "protocols/registry.json has 13 protocols defined. dna-matrix/core/protocols/ has pipeline.py, registry.py, registry_loader.py, plus category modules (physical.py, tactical.py, volatility.py, psychological.py, market.py). app/protocol/ has CRUD router, models, schemas, service, recommendation engine.",
+      "files": [
+        "protocols/registry.json",
+        "dna-matrix/core/protocols/pipeline.py",
+        "dna-matrix/core/protocols/registry.py",
+        "dna-matrix/core/protocols/registry_loader.py",
+        "dna-matrix/core/protocols/physical.py",
+        "dna-matrix/core/protocols/tactical.py",
+        "dna-matrix/core/protocols/volatility.py",
+        "dna-matrix/core/protocols/psychological.py",
+        "dna-matrix/core/protocols/market.py",
+        "dna-matrix/core/protocols/artifact_mapper.py",
+        "dna-matrix/core/protocols/dna_mode.py",
+        "dna-matrix/core/protocols/shadow_logger.py",
+        "dna-matrix/core/protocols/messaging.py",
+        "app/protocol/router.py",
+        "app/protocol/models.py",
+        "app/protocol/schemas.py",
+        "app/protocol/service.py",
+        "app/protocol/recommendation_router.py",
+        "app/protocol/recommendation_models.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S4-Protocol",
+        "phase": "foundation",
+        "priority": "HIGH"
+      },
+      "checkpoint": {
+        "name": "Protocol Engine Functional",
+        "criteria": [
+          "protocol registry loads all 13 protocols",
+          "at least one protocol executes with real data",
+          "protocol artifacts pass DNA validator",
+          "API response includes triggeredProtocols",
+          "tier gating works (PRO vs ELITE)"
+        ],
+        "proof": [
+          "curl /api/protocols returns registry",
+          "unit tests for protocol pipeline"
+        ]
+      },
+      "tasks": [
+        "verify registry_loader parses all 13 protocols",
+        "test protocol pipeline execution with sample game data",
+        "confirm artifact_mapper produces valid DNA artifacts",
+        "verify shadow_logger captures CORE vs CORE_PLUS comparison"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_odds_provider",
+      "name": "Live Odds Provider",
+      "intent": "Fetches live odds and scores from The Odds API. Supports NBA, NFL, NHL, MLB, MLS, EPL, UCL.",
+      "tier": "CORE",
+      "status": "UNKNOWN",
+      "evidence": "app/providers/odds_api.py exists with real OddsApiProvider class, BASE_URL, sport key mapping. Also cached_odds_api.py. But requires API key - unknown if configured on VPS.",
+      "files": [
+        "app/providers/odds_api.py",
+        "app/providers/cached_odds_api.py",
+        "app/providers/base.py",
+        "app/providers/factory.py",
+        "app/providers/live_provider.py",
+        "app/providers/mock_provider.py",
+        "app/providers/mock.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S3-DataSources",
+        "phase": "data-integrity",
+        "priority": "HIGH"
+      },
+      "checkpoint": {
+        "name": "Live Odds Connected",
+        "criteria": [
+          "OddsApiProvider fetches real data",
+          "API key is configured",
+          "cache layer reduces API calls",
+          "fallback to mock when API unavailable"
+        ],
+        "proof": [
+          "curl /api/v1/odds/sports returns live sports",
+          "curl /api/v1/odds/games returns real games"
+        ]
+      },
+      "tasks": [
+        "verify ODDS_API_KEY is set on VPS",
+        "test live odds fetch for NBA",
+        "confirm cache TTL works",
+        "verify mock fallback"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_nba_analytics",
+      "name": "NBA Analytics Engine",
+      "intent": "Full NBA data pipeline: teams, players, games, injuries, edge analysis, rest tracking, tank watch, matchup analysis.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/nba/ has router.py with 13 endpoints, database.py, models.py (DimTeam, DimPlayer), ingestion.py. Bootstraps on startup, runs daily ETL.",
+      "files": [
+        "app/nba/router.py",
+        "app/nba/database.py",
+        "app/nba/models.py",
+        "app/nba/ingestion.py",
+        "app/nba/scrapers/"
+      ],
+      "sprintLayer": {
+        "sprintId": "S3-DataSources",
+        "phase": "data-integrity",
+        "priority": "HIGH"
+      },
+      "checkpoint": {
+        "name": "NBA Data Pipeline Working",
+        "criteria": [
+          "teams table populated",
+          "players table populated with photos",
+          "games for today fetched",
+          "daily ETL runs on startup",
+          "edge analysis returns real data"
+        ],
+        "proof": [
+          "curl /api/nba/teams returns team list",
+          "curl /api/nba/games/today returns today's games",
+          "curl /api/nba/edge/{team_a}/{team_b} returns analysis"
+        ]
+      },
+      "tasks": [
+        "verify startup bootstrap completes",
+        "test edge endpoint with real teams",
+        "confirm injury scraper works"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_context_system",
+      "name": "Context Ingestion System",
+      "intent": "Fetches external context (NBA availability, injuries) and applies context modifiers to evaluations.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "context/ module with service.py, apply.py, snapshot.py. Provider: nba_availability.py. Imported by pipeline.py at line 41-42.",
+      "files": [
+        "context/service.py",
+        "context/apply.py",
+        "context/snapshot.py",
+        "context/providers/base.py",
+        "context/providers/nba_availability.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S3-DataSources",
+        "phase": "data-integrity",
+        "priority": "MEDIUM"
+      },
+      "checkpoint": {
+        "name": "Context Feeds Connected",
+        "criteria": [
+          "context service returns NBA availability data",
+          "context modifiers applied to evaluation",
+          "snapshot stored for comparison"
+        ],
+        "proof": [
+          "pipeline evaluation includes context section",
+          "context/tests/ pass"
+        ]
+      },
+      "tasks": [
+        "verify nba_availability provider fetches real data",
+        "test context application in pipeline"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_sherlock",
+      "name": "Sherlock Explainability Engine",
+      "intent": "Generates plain-English explanations for DNA evaluation results. Audit trail and mutation tracking.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "sherlock/ module with engine.py, audit.py, mutation.py, models.py. Imported by pipeline via app/sherlock_hook.py. Feature-flagged (sherlock_enabled).",
+      "files": [
+        "sherlock/engine.py",
+        "sherlock/audit.py",
+        "sherlock/mutation.py",
+        "sherlock/models.py",
+        "app/sherlock_hook.py",
+        "app/explainability_adapter.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S2-Pipeline",
+        "phase": "integrity",
+        "priority": "MEDIUM"
+      },
+      "checkpoint": {
+        "name": "Sherlock Explanations Working",
+        "criteria": [
+          "sherlock engine produces explanations",
+          "explainability adapter transforms to UI format",
+          "audit trail logged",
+          "feature flag toggles correctly"
+        ],
+        "proof": [
+          "evaluation response includes sherlock section",
+          "debug/sherlock-dna/recent returns data"
+        ]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_alerts",
+      "name": "Alert Detection System",
+      "intent": "Detects alert conditions on evaluations (risk thresholds, data quality issues). Triggers configurable alerts.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "alerts/ module with detector.py, service.py, store.py, triggers.py, models.py. 5 test files. Imported by pipeline.py at line 44.",
+      "files": [
+        "alerts/detector.py",
+        "alerts/service.py",
+        "alerts/store.py",
+        "alerts/triggers.py",
+        "alerts/models.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S2-Pipeline",
+        "phase": "integrity",
+        "priority": "LOW"
+      },
+      "checkpoint": {
+        "name": "Alert System Functional",
+        "criteria": [
+          "alerts fire on high-risk evaluations",
+          "alert store persists alerts",
+          "triggers execute correctly"
+        ],
+        "proof": ["alerts/tests/ all pass"]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_web_ui",
+      "name": "Web UI",
+      "intent": "Server-rendered Jinja2 HTML app with screens: dashboard, browse, builder, auth, landing, notifications, onboarding, history, protocol, admin.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "10 HTML templates in app/templates/screens/. Static assets (CSS, JS) in app/web_assets/. Neon theme. Router at app/routers/web.py serves /app.",
+      "files": [
+        "app/routers/web.py",
+        "app/templates/app/index.html",
+        "app/templates/screens/dashboard.html",
+        "app/templates/screens/browse.html",
+        "app/templates/screens/builder.html",
+        "app/templates/screens/auth.html",
+        "app/templates/screens/landing.html",
+        "app/templates/screens/notifications.html",
+        "app/templates/screens/onboarding.html",
+        "app/templates/screens/history.html",
+        "app/templates/screens/protocol.html",
+        "app/templates/admin/dashboard.html",
+        "app/web_assets/static/css/app.css",
+        "app/web_assets/static/css/neon-theme.css",
+        "app/web_assets/static/js/app.js",
+        "app/web_assets/static/js/builder.js",
+        "app/web_assets/static/js/auth.js"
+      ],
+      "sprintLayer": {
+        "sprintId": "S6-ProtocolUI",
+        "phase": "ui",
+        "priority": "MEDIUM"
+      },
+      "checkpoint": {
+        "name": "All UI Screens Render",
+        "criteria": [
+          "GET /app returns 200",
+          "all 10 screens render without errors",
+          "static assets load",
+          "builder submits evaluation"
+        ],
+        "proof": [
+          "Playwright e2e/app-ui.spec.ts passes",
+          "curl /app returns HTML"
+        ]
+      },
+      "tasks": [
+        "add protocol panel to UI",
+        "show triggered protocols in evaluation results"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_auth",
+      "name": "Authentication System",
+      "intent": "User registration, login, JWT tokens, tier upgrades. Routes: /register, /login, /me, /refresh, /logout, /upgrade.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/routers/auth.py has 6 endpoints with response models. auth/ module exists. Database init on startup.",
+      "files": [
+        "app/routers/auth.py",
+        "auth/"
+      ],
+      "sprintLayer": {
+        "sprintId": "S5-ProtocolToggle",
+        "phase": "gating",
+        "priority": "MEDIUM"
+      },
+      "checkpoint": {
+        "name": "Auth Flow Working",
+        "criteria": [
+          "register creates user",
+          "login returns JWT",
+          "me returns user profile",
+          "upgrade changes tier"
+        ],
+        "proof": [
+          "curl POST /api/auth/register",
+          "curl POST /api/auth/login"
+        ]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_bets",
+      "name": "Bet Management",
+      "intent": "Create, track, settle bets. History and transaction tracking.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/routers/bets.py with 5 endpoints: history, get bet, create, settle, transactions. Response models defined.",
+      "files": ["app/routers/bets.py"],
+      "sprintLayer": {
+        "sprintId": "S2-Pipeline",
+        "phase": "integrity",
+        "priority": "MEDIUM"
+      },
+      "checkpoint": {
+        "name": "Bet CRUD Working",
+        "criteria": [
+          "create bet stores correctly",
+          "history returns past bets",
+          "settle updates outcome"
+        ],
+        "proof": ["curl POST /api/bets/ creates bet"]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_notifications",
+      "name": "Notification System",
+      "intent": "User notifications with preferences, read/dismiss, opportunity alerts.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/routers/notifications.py with 7 endpoints. Models in app/models/. CSS in web_assets.",
+      "files": [
+        "app/routers/notifications.py",
+        "app/models/notification.py",
+        "app/models/notification_event.py",
+        "app/models/notification_preferences.py",
+        "app/models/notification_receipt.py",
+        "app/templates/screens/notifications.html"
+      ],
+      "sprintLayer": {
+        "sprintId": "S8-IntelligenceUX",
+        "phase": "ux",
+        "priority": "LOW"
+      },
+      "checkpoint": {
+        "name": "Notifications Working",
+        "criteria": [
+          "list notifications returns data",
+          "mark as read works",
+          "preferences saved"
+        ],
+        "proof": ["curl GET /api/notifications"]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_preferences",
+      "name": "User Preferences",
+      "intent": "Store and retrieve user preferences (risk profile, favorite sports, notification settings). Drives protocol messaging personalization.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/routers/preferences.py with 5 endpoints. Models in app/models/user_preferences.py.",
+      "files": [
+        "app/routers/preferences.py",
+        "app/models/user_preferences.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S8-IntelligenceUX",
+        "phase": "ux",
+        "priority": "MEDIUM"
+      },
+      "checkpoint": {
+        "name": "Preferences Persisted",
+        "criteria": [
+          "get preferences returns defaults",
+          "set preferences persists",
+          "risk profile used by protocol messaging"
+        ],
+        "proof": ["curl GET /api/preferences"]
+      },
+      "tasks": [
+        "connect user risk_profile to protocol explain templates"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_voice",
+      "name": "Voice/TTS Narration",
+      "intent": "Text-to-speech narration of evaluation results.",
+      "tier": "PRO",
+      "status": "UNKNOWN",
+      "evidence": "app/voice/router.py exists with 5 routes. Feature-flagged (voice_enabled). Unknown if TTS provider configured.",
+      "files": ["app/voice/router.py"],
+      "sprintLayer": {
+        "sprintId": "S8-IntelligenceUX",
+        "phase": "ux",
+        "priority": "LOW"
+      },
+      "checkpoint": {
+        "name": "Voice Narration Works",
+        "criteria": [
+          "TTS provider configured",
+          "voice endpoint returns audio",
+          "feature flag toggles correctly"
+        ],
+        "proof": ["curl voice endpoint returns audio data"]
+      },
+      "tasks": [
+        "verify TTS provider setup",
+        "test voice endpoint"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_image_eval",
+      "name": "Bet Slip OCR",
+      "intent": "Extract bet details from bet slip images via OCR, then evaluate.",
+      "tier": "PRO",
+      "status": "UNKNOWN",
+      "evidence": "app/image_eval/ has extractor.py and config.py. Route at /leading-light/evaluate/image. Unknown if OCR provider configured.",
+      "files": [
+        "app/image_eval/extractor.py",
+        "app/image_eval/config.py",
+        "app/routers/leading_light.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S8-IntelligenceUX",
+        "phase": "ux",
+        "priority": "LOW"
+      },
+      "checkpoint": {
+        "name": "Image OCR Works",
+        "criteria": [
+          "OCR provider configured",
+          "image upload returns extracted bet",
+          "extracted bet evaluates correctly"
+        ],
+        "proof": ["curl POST /leading-light/evaluate/image with test image"]
+      },
+      "tasks": [
+        "verify OCR config",
+        "test with sample bet slip image"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_analytics",
+      "name": "Analytics & Heuristics",
+      "intent": "Sport-specific heuristics (MLB, NFL, NHL, Soccer, Tennis, UFC) and analytics enrichment layer.",
+      "tier": "PRO",
+      "status": "UNKNOWN",
+      "evidence": "analytics/ module with cache.py, enrichment.py, schemas.py, heuristics/. app/heuristics/ has sport-specific subdirectories. Unknown if populated with real logic.",
+      "files": [
+        "analytics/cache.py",
+        "analytics/enrichment.py",
+        "analytics/heuristics/",
+        "app/heuristics/mlb/",
+        "app/heuristics/nfl/",
+        "app/heuristics/nhl/",
+        "app/heuristics/soccer/",
+        "app/heuristics/tennis/",
+        "app/heuristics/ufc/"
+      ],
+      "sprintLayer": {
+        "sprintId": "S3-DataSources",
+        "phase": "data-integrity",
+        "priority": "MEDIUM"
+      },
+      "checkpoint": {
+        "name": "Sport Heuristics Functional",
+        "criteria": [
+          "at least NBA heuristics produce real analysis",
+          "analytics enrichment integrates with pipeline"
+        ],
+        "proof": ["heuristic output in evaluation response"]
+      },
+      "tasks": [
+        "audit each sport heuristic module",
+        "verify analytics cache works"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_delta_engine",
+      "name": "Change Delta Engine",
+      "intent": "Tracks structural changes between evaluations. Computes snapshot deltas and confidence trends.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/delta_engine.py imported by pipeline.py. Functions: compute_snapshot_delta, store/get_previous_snapshot, compute_confidence_trend.",
+      "files": [
+        "app/delta_engine.py",
+        "app/structure_snapshot.py",
+        "app/grounding_score.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S7-Compare",
+        "phase": "comparison",
+        "priority": "HIGH"
+      },
+      "checkpoint": {
+        "name": "Delta Tracking Works",
+        "criteria": [
+          "snapshots stored per session",
+          "delta computed between snapshots",
+          "confidence trend calculated"
+        ],
+        "proof": ["evaluation response includes delta section"]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_dna_contracts",
+      "name": "DNA Contract System",
+      "intent": "Validates evaluation outputs against DNA contracts. Emits artifacts. UI contract for frontend rendering.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/dna/ has contract_validator.py, artifact_emitter.py, ui_contract_v1.py. All imported by pipeline.py.",
+      "files": [
+        "app/dna/contract_validator.py",
+        "app/dna/artifact_emitter.py",
+        "app/dna/ui_contract_v1.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S2-Pipeline",
+        "phase": "integrity",
+        "priority": "HIGH"
+      },
+      "checkpoint": {
+        "name": "DNA Contracts Enforced",
+        "criteria": [
+          "every evaluation passes contract validation",
+          "artifacts emitted correctly",
+          "UI contract version matches"
+        ],
+        "proof": ["GET /debug/contracts returns versions"]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_admin",
+      "name": "Admin Dashboard",
+      "intent": "Admin panel for config, reports, cache management, NBA sync, notification dashboard.",
+      "tier": "INTERNAL",
+      "status": "WORKING",
+      "evidence": "app/admin/router.py with 15+ endpoints. Admin HTML template exists.",
+      "files": [
+        "app/admin/router.py",
+        "app/templates/admin/dashboard.html"
+      ],
+      "sprintLayer": {
+        "sprintId": "S1-Audit",
+        "phase": "audit",
+        "priority": "LOW"
+      },
+      "checkpoint": {
+        "name": "Admin Panel Accessible",
+        "criteria": [
+          "GET /admin returns dashboard",
+          "config endpoint works",
+          "reports return data"
+        ],
+        "proof": ["curl /admin returns HTML"]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_billing",
+      "name": "Billing / Stripe Integration",
+      "intent": "Checkout, webhook handling, billing portal for tier upgrades.",
+      "tier": "CORE",
+      "status": "UNKNOWN",
+      "evidence": "billing/ directory exists. Legacy web router has /app/billing/* endpoints. Unknown if Stripe keys configured.",
+      "files": ["billing/"],
+      "sprintLayer": {
+        "sprintId": "S5-ProtocolToggle",
+        "phase": "gating",
+        "priority": "MEDIUM"
+      },
+      "checkpoint": {
+        "name": "Billing Flow Works",
+        "criteria": [
+          "Stripe API key configured",
+          "checkout creates session",
+          "webhook updates user tier"
+        ],
+        "proof": ["Stripe test mode checkout"]
+      },
+      "tasks": [
+        "verify Stripe keys on VPS",
+        "test checkout flow in test mode"
+      ]
+    },
+
+    {
+      "capabilityId": "cap_leading_light",
+      "name": "Leading Light API",
+      "intent": "Primary evaluation API endpoint. Text and image evaluation with tier gating.",
+      "tier": "CORE",
+      "status": "WORKING",
+      "evidence": "app/routers/leading_light.py with 7 routes including /evaluate/text, /evaluate/image. Imports pipeline.",
+      "files": [
+        "app/routers/leading_light.py",
+        "app/schemas/leading_light.py",
+        "app/demo/leading_light_demo_cases.py"
+      ],
+      "sprintLayer": {
+        "sprintId": "S2-Pipeline",
+        "phase": "integrity",
+        "priority": "CRITICAL"
+      },
+      "checkpoint": {
+        "name": "Leading Light Evaluation Works",
+        "criteria": [
+          "POST /leading-light/evaluate/text returns evaluation",
+          "tier parameter affects response depth",
+          "demo cases produce expected output"
+        ],
+        "proof": [
+          "curl POST /leading-light/evaluate/text",
+          "e2e/evaluate-flow.spec.ts passes"
+        ]
+      },
+      "tasks": []
+    },
+
+    {
+      "capabilityId": "cap_e2e_tests",
+      "name": "Playwright E2E Tests",
+      "intent": "End-to-end browser tests for health, UI screens, and evaluate flow.",
+      "tier": "INTERNAL",
+      "status": "WORKING",
+      "evidence": "e2e/ has 3 spec files. playwright.config.ts targets VPS. GitHub Actions CI in .github/workflows/e2e.yml.",
+      "files": [
+        "e2e/health.spec.ts",
+        "e2e/app-ui.spec.ts",
+        "e2e/evaluate-flow.spec.ts",
+        "playwright.config.ts"
+      ],
+      "sprintLayer": {
+        "sprintId": "S1-Audit",
+        "phase": "audit",
+        "priority": "HIGH"
+      },
+      "checkpoint": {
+        "name": "E2E Tests Pass",
+        "criteria": [
+          "health.spec.ts passes",
+          "app-ui.spec.ts passes",
+          "evaluate-flow.spec.ts passes"
+        ],
+        "proof": ["npx playwright test output"]
+      },
+      "tasks": [
+        "run full playwright suite against VPS",
+        "fix any failures"
+      ]
+    }
+  ],
+
+  "routes": {
+    "web": [
+      {"method": "GET", "path": "/", "handler": "web.py", "purpose": "Landing/redirect"},
+      {"method": "GET", "path": "/app", "handler": "web.py", "purpose": "Main web UI (screen param)"},
+      {"method": "POST", "path": "/app/evaluate", "handler": "web.py", "purpose": "Web evaluation form"},
+      {"method": "GET", "path": "/new", "handler": "web.py", "purpose": "New UI version"},
+      {"method": "GET", "path": "/admin", "handler": "web.py", "purpose": "Admin dashboard"}
+    ],
+    "evaluation": [
+      {"method": "POST", "path": "/leading-light/evaluate/text", "handler": "leading_light.py", "purpose": "Core text evaluation API"},
+      {"method": "POST", "path": "/leading-light/evaluate/image", "handler": "leading_light.py", "purpose": "Bet slip OCR evaluation"}
+    ],
+    "auth": [
+      {"method": "POST", "path": "/api/auth/register", "handler": "auth.py", "purpose": "User registration"},
+      {"method": "POST", "path": "/api/auth/login", "handler": "auth.py", "purpose": "User login"},
+      {"method": "GET", "path": "/api/auth/me", "handler": "auth.py", "purpose": "Current user"},
+      {"method": "POST", "path": "/api/auth/refresh", "handler": "auth.py", "purpose": "Token refresh"},
+      {"method": "POST", "path": "/api/auth/logout", "handler": "auth.py", "purpose": "Logout"},
+      {"method": "POST", "path": "/api/auth/upgrade", "handler": "auth.py", "purpose": "Tier upgrade"}
+    ],
+    "bets": [
+      {"method": "GET", "path": "/api/bets/history", "handler": "bets.py", "purpose": "Bet history"},
+      {"method": "GET", "path": "/api/bets/{bet_id}", "handler": "bets.py", "purpose": "Get single bet"},
+      {"method": "POST", "path": "/api/bets/", "handler": "bets.py", "purpose": "Create bet"},
+      {"method": "POST", "path": "/api/bets/{bet_id}/settle", "handler": "bets.py", "purpose": "Settle bet"},
+      {"method": "GET", "path": "/api/bets/transactions", "handler": "bets.py", "purpose": "Transaction history"}
+    ],
+    "odds": [
+      {"method": "GET", "path": "/api/v1/odds/sports", "handler": "odds.py", "purpose": "Available sports"},
+      {"method": "GET", "path": "/api/v1/odds/games", "handler": "odds.py", "purpose": "Games list"},
+      {"method": "GET", "path": "/api/v1/odds/odds/{game_id}", "handler": "odds.py", "purpose": "Game odds"},
+      {"method": "GET", "path": "/api/v1/odds/score/{game_id}", "handler": "odds.py", "purpose": "Live score"},
+      {"method": "POST", "path": "/api/v1/odds/cache/clear", "handler": "odds.py", "purpose": "Clear odds cache"},
+      {"method": "GET", "path": "/api/v1/odds/context/{sport}/{game_id}", "handler": "odds.py", "purpose": "Game context"}
+    ],
+    "nba": [
+      {"method": "GET", "path": "/api/nba/teams", "handler": "nba/router.py", "purpose": "NBA teams"},
+      {"method": "GET", "path": "/api/nba/players", "handler": "nba/router.py", "purpose": "NBA players"},
+      {"method": "GET", "path": "/api/nba/players/{id}", "handler": "nba/router.py", "purpose": "Player detail"},
+      {"method": "GET", "path": "/api/nba/games/today", "handler": "nba/router.py", "purpose": "Today's games"},
+      {"method": "GET", "path": "/api/nba/edge/{a}/{b}", "handler": "nba/router.py", "purpose": "Edge analysis"},
+      {"method": "GET", "path": "/api/nba/rest/{team}", "handler": "nba/router.py", "purpose": "Rest tracking"},
+      {"method": "GET", "path": "/api/nba/tank/{team}", "handler": "nba/router.py", "purpose": "Tank watch"},
+      {"method": "GET", "path": "/api/nba/injuries/{team}", "handler": "nba/router.py", "purpose": "Injury report"},
+      {"method": "GET", "path": "/api/nba/standings/{team}", "handler": "nba/router.py", "purpose": "Standings"},
+      {"method": "GET", "path": "/api/nba/matchup/{a}/{b}", "handler": "nba/router.py", "purpose": "Matchup analysis"}
+    ],
+    "protocols": [
+      {"method": "POST", "path": "/api/protocols", "handler": "protocol/router.py", "purpose": "Create protocol"},
+      {"method": "GET", "path": "/api/protocols", "handler": "protocol/router.py", "purpose": "List protocols"},
+      {"method": "GET", "path": "/api/protocols/{id}", "handler": "protocol/router.py", "purpose": "Get protocol"},
+      {"method": "DELETE", "path": "/api/protocols/{id}", "handler": "protocol/router.py", "purpose": "Delete protocol"},
+      {"method": "POST", "path": "/api/protocols/{id}/snapshot", "handler": "protocol/router.py", "purpose": "Create snapshot"},
+      {"method": "GET", "path": "/api/protocols/{id}/recommendations", "handler": "recommendation_router.py", "purpose": "Get recommendations"},
+      {"method": "POST", "path": "/api/protocols/{id}/recommendations/refresh", "handler": "recommendation_router.py", "purpose": "Refresh recs"},
+      {"method": "POST", "path": "/api/protocols/{id}/build-parlay", "handler": "recommendation_router.py", "purpose": "Build parlay from protocol"}
+    ],
+    "notifications": [
+      {"method": "GET", "path": "/api/notifications", "handler": "notifications.py", "purpose": "List notifications"},
+      {"method": "GET", "path": "/api/notifications/preferences", "handler": "notifications.py", "purpose": "Notification prefs"},
+      {"method": "POST", "path": "/api/notifications/preferences", "handler": "notifications.py", "purpose": "Set notification prefs"},
+      {"method": "POST", "path": "/api/notifications/{id}/read", "handler": "notifications.py", "purpose": "Mark read"},
+      {"method": "DELETE", "path": "/api/notifications/{id}", "handler": "notifications.py", "purpose": "Dismiss"}
+    ],
+    "admin": [
+      {"method": "GET", "path": "/api/admin/config", "handler": "admin/router.py", "purpose": "Get config"},
+      {"method": "POST", "path": "/api/admin/config/update", "handler": "admin/router.py", "purpose": "Update config"},
+      {"method": "GET", "path": "/api/admin/report/super", "handler": "admin/router.py", "purpose": "Super report"},
+      {"method": "GET", "path": "/api/admin/report/health", "handler": "admin/router.py", "purpose": "Health report"},
+      {"method": "GET", "path": "/api/admin/report/nba", "handler": "admin/router.py", "purpose": "NBA report"},
+      {"method": "POST", "path": "/api/admin/nba/sync-teams", "handler": "admin/router.py", "purpose": "Sync NBA teams"},
+      {"method": "POST", "path": "/api/admin/nba/run-etl", "handler": "admin/router.py", "purpose": "Run NBA ETL"}
+    ],
+    "system": [
+      {"method": "GET", "path": "/health", "handler": "main.py", "purpose": "Health check"},
+      {"method": "GET", "path": "/build", "handler": "main.py", "purpose": "Build info"},
+      {"method": "GET", "path": "/debug/contracts", "handler": "main.py", "purpose": "Contract versions"},
+      {"method": "GET", "path": "/panel", "handler": "panel.py", "purpose": "Developer panel"},
+      {"method": "GET", "path": "/history", "handler": "history.py", "purpose": "Evaluation history"}
+    ],
+    "mock": [
+      {"method": "GET", "path": "/mock/sports", "handler": "mock_api.py", "purpose": "Mock sports data"},
+      {"method": "GET", "path": "/mock/games", "handler": "mock_api.py", "purpose": "Mock games"},
+      {"method": "GET", "path": "/mock/protocols/catalog", "handler": "mock_api.py", "purpose": "Mock protocol catalog"}
+    ]
+  },
+
+  "uiScreens": [
+    {"screen": "dashboard", "file": "screens/dashboard.html", "status": "WORKING"},
+    {"screen": "browse", "file": "screens/browse.html", "status": "WORKING"},
+    {"screen": "builder", "file": "screens/builder.html", "status": "WORKING"},
+    {"screen": "auth", "file": "screens/auth.html", "status": "WORKING"},
+    {"screen": "landing", "file": "screens/landing.html", "status": "WORKING"},
+    {"screen": "notifications", "file": "screens/notifications.html", "status": "WORKING"},
+    {"screen": "onboarding", "file": "screens/onboarding.html", "status": "WORKING"},
+    {"screen": "history", "file": "screens/history.html", "status": "WORKING"},
+    {"screen": "protocol", "file": "screens/protocol.html", "status": "WORKING"},
+    {"screen": "admin", "file": "admin/dashboard.html", "status": "WORKING"}
+  ],
+
+  "pipelineStages": [
+    {"order": 1, "name": "input_normalize", "module": "app/airlock.py", "status": "WORKING"},
+    {"order": 2, "name": "bet_block_parse", "module": "app/pipeline.py", "status": "WORKING"},
+    {"order": 3, "name": "core_evaluation", "module": "dna-matrix/core/evaluation.py", "status": "WORKING"},
+    {"order": 4, "name": "context_ingestion", "module": "context/service.py", "status": "WORKING"},
+    {"order": 5, "name": "context_apply", "module": "context/apply.py", "status": "WORKING"},
+    {"order": 6, "name": "alert_check", "module": "alerts/service.py", "status": "WORKING"},
+    {"order": 7, "name": "sherlock_explain", "module": "sherlock/engine.py", "status": "WORKING"},
+    {"order": 8, "name": "explainability_transform", "module": "app/explainability_adapter.py", "status": "WORKING"},
+    {"order": 9, "name": "proof_summary", "module": "app/proof_summary.py", "status": "WORKING"},
+    {"order": 10, "name": "dna_contract_validate", "module": "app/dna/contract_validator.py", "status": "WORKING"},
+    {"order": 11, "name": "artifact_emit", "module": "app/dna/artifact_emitter.py", "status": "WORKING"},
+    {"order": 12, "name": "ui_contract_validate", "module": "app/dna/ui_contract_v1.py", "status": "WORKING"},
+    {"order": 13, "name": "structure_snapshot", "module": "app/structure_snapshot.py", "status": "WORKING"},
+    {"order": 14, "name": "delta_compute", "module": "app/delta_engine.py", "status": "WORKING"},
+    {"order": 15, "name": "grounding_score", "module": "app/grounding_score.py", "status": "WORKING"},
+    {"order": 16, "name": "tier_filter", "module": "app/pipeline.py", "status": "WORKING"},
+    {"order": 17, "name": "protocol_engine", "module": "dna-matrix/core/protocols/pipeline.py", "status": "UNKNOWN"}
+  ],
+
+  "protocolRegistry": {
+    "total": 13,
+    "byTier": {
+      "PRO": ["back_to_back_fatigue", "travel_stress", "pace_shock", "defensive_mismatch", "foul_trouble", "lineup_instability", "injury_shadow", "revenge_game", "momentum"],
+      "ELITE": ["pace_collapse", "sharp_movement", "trap_line", "whistle_shift"]
+    },
+    "byCategory": {
+      "physical": ["back_to_back_fatigue", "travel_stress"],
+      "tactical": ["pace_shock", "defensive_mismatch", "pace_collapse"],
+      "volatility": ["foul_trouble", "lineup_instability", "injury_shadow"],
+      "psychological": ["revenge_game", "momentum"],
+      "market": ["sharp_movement", "trap_line", "whistle_shift"]
+    }
+  },
+
+  "dataSources": [
+    {"name": "The Odds API", "module": "app/providers/odds_api.py", "status": "UNKNOWN", "note": "Requires ODDS_API_KEY"},
+    {"name": "NBA Stats API", "module": "app/nba/ingestion.py", "status": "WORKING", "note": "Auto-bootstraps on startup"},
+    {"name": "NBA Injury Scraper", "module": "app/nba/scrapers/", "status": "UNKNOWN", "note": "Web scraping - fragile"},
+    {"name": "Context Providers", "module": "context/providers/", "status": "WORKING", "note": "NBA availability provider"}
+  ],
+
+  "testSuite": {
+    "unitTests": {"count": 38, "location": "tests/", "status": "PARTIAL", "note": "38 collected, 1 error (ui_smoke plugin conflict)"},
+    "e2eTests": {"count": 3, "location": "e2e/", "status": "WORKING", "note": "Playwright targeting VPS"},
+    "alertTests": {"count": 5, "location": "alerts/tests/", "status": "UNKNOWN"},
+    "contextTests": {"count": "unknown", "location": "context/tests/", "status": "UNKNOWN"},
+    "dnaMatrixTests": {"count": "unknown", "location": "dna-matrix/tests/", "status": "UNKNOWN"}
+  },
+
+  "fileStats": {
+    "pythonFiles": 321,
+    "htmlTemplates": 12,
+    "jsFiles": 5,
+    "cssFiles": 4,
+    "totalRoutes": 80
+  }
+}

@@ -1,10 +1,10 @@
 """
 Marvin Cache Layer
 Phase 1: Exact match caching with TTL and metrics
-Phase 1 Day 2: State-aware cache keys + git invalidation
 """
 
 from .cache import CacheLayer
 from .key_generator import CacheKeyGenerator
+from .git_invalidation import invalidate_project_cache
 
-__all__ = ['CacheLayer', 'CacheKeyGenerator']
+__all__ = ['CacheLayer', 'CacheKeyGenerator', 'invalidate_project_cache']

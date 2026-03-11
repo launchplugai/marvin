@@ -13,13 +13,14 @@ Implements:
 
 import sqlite3
 import json
-import hashlib
 import time
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import os
+
+from .key_generator import CacheKeyGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -27,26 +28,27 @@ logger = logging.getLogger(__name__)
 class CacheLayer:
     """
     SQLite-backed cache with TTL, metrics, and invalidation.
-    
+
     Design principles:
     - Fast queries: <5ms for cache_get
     - Metrics obsessed: every operation logged
     - Graceful degradation: cache miss = forward, not error
     - Project-aware: invalidate by git state
     """
-    
-    def __init__(self, db_path: str = None):
+
+    def __init__(self, db_path: str = None, key_generator: CacheKeyGenerator = None):
         """Initialize cache with SQLite backend."""
         if db_path is None:
             db_path = os.path.expanduser("~/.openclaw/workspace/cache/responses.db")
-        
+
         self.db_path = db_path
+        self.keygen = key_generator or CacheKeyGenerator()
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Use check_same_thread=False for async operations
         self.conn = sqlite3.connect(db_path, check_same_thread=False, timeout=10.0)
         self.conn.row_factory = sqlite3.Row
-        
+
         self._init_schema()
         self._init_ttl_map()
         
@@ -144,9 +146,8 @@ class CacheLayer:
         }
     
     def _make_cache_key(self, intent: str, project: str = None, state_sig: str = "") -> str:
-        """Generate deterministic cache key from intent + project + state."""
-        key_data = f"{intent}:{project or 'global'}:{state_sig}"
-        return hashlib.sha256(key_data.encode()).hexdigest()[:12]
+        """Generate deterministic cache key via CacheKeyGenerator."""
+        return self.keygen.generate_cache_key(intent, project, state_sig or "global")
     
     def get(self, intent: str, project: str = None, state_sig: str = "") -> Optional[Dict[str, Any]]:
         """
@@ -195,7 +196,7 @@ class CacheLayer:
                 return {
                     "value": json.loads(row["response"]),
                     "metadata": json.loads(row["metadata"] or "{}"),
-                    "hit_count": row["hit_count"],
+                    "hit_count": row["hit_count"] + 1,
                     "age_seconds": now - row["created_at"],
                     "tokens_saved": tokens,
                 }
@@ -258,7 +259,6 @@ class CacheLayer:
             self.conn.commit()
             
             self.stats["writes"] += 1
-            self.stats["tokens_saved"] += tokens_saved
             self._log_metric("cache_write", intent, project, tier, tokens_saved)
             
             logger.debug(f"Cached {intent} (key={key}, ttl={ttl}s, tokens_saved={tokens_saved})")

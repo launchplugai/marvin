@@ -1,254 +1,262 @@
-# Marvin — Operator Context
+# Marvin — Initialization Cascade
 
-> This file is the single source of truth for any Claude Code session working on this project.
-> It persists on the VPS vault and is synced to `/root/projects/CLAUDE.md` on every boot.
-
----
-
-## 1. What Is This System
-
-Marvin is a multi-agent engineering system running on a Hostinger VPS.
-It has two operational layers:
-
-1. **Marvin Core** — Python codebase (`src/`) implementing intelligent caching, intent classification, and rate-limit-aware routing across free-tier LLM APIs (Groq, Kimi, Ollama) with Claude as escalation.
-2. **Claude Hub** — The VPS container infrastructure that runs Claude Code persistently, manages secrets, bootstraps repos, and enables remote control from `claude.ai/code`.
+> **READ THIS FIRST. This is the only file you need to start.**
+> Everything flows from here. No guessing, no searching.
 
 ---
 
-## 2. VPS Infrastructure
+## 0. WHO ARE YOU?
 
-### Server
-| Field | Value |
-|-------|-------|
-| Provider | Hostinger |
-| Plan | KVM 2 (2 CPU, 8 GB RAM, 100 GB disk) |
-| IP | `187.77.211.80` |
-| IPv6 | `2a02:4780:4:d31e::1` |
-| Hostname | `srv1405440.hstgr.cloud` |
-| OS | Ubuntu 24.04 + Docker |
-| VM ID | `1405440` |
-| API | `https://developers.hostinger.com/api/vps/v1/` |
-
-### Docker Containers
+Run this decision tree **immediately** — before reading anything else:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  HOSTINGER VPS  (187.77.211.80)                             │
-│                                                             │
-│  ┌─────────────┐   ┌──────────────┐   ┌──────────────────┐ │
-│  │ key-locker  │──▶│ locker-vault │◀──│   claude-hub     │ │
-│  │ (alpine)    │   │   (volume)   │   │  (node:20)       │ │
-│  │ run-once    │   │              │   │  Claude Code      │ │
-│  │             │   │ .keys.enc    │   │  in tmux          │ │
-│  │ Provisions: │   │ entrypoint.sh│   │  network: host    │ │
-│  │ - API keys  │   │ bootstrap.sh │   │  mem: 4 GB        │ │
-│  │ - scripts   │   │ CLAUDE.md    │   │                   │ │
-│  │ - bootstrap │   │ MEMORY.md    │   │  /root/projects/  │ │
-│  └─────────────┘   └──────────────┘   │   ├── claude-hub/ │ │
-│                                       │   ├── BetApp/     │ │
-│                                       │   └── CLAUDE.md   │ │
-│  ┌──────────────┐   ┌──────────────┐  └──────────────────┘ │
-│  │ ollama       │   │ marvin-skills│                        │
-│  │ 127.0.0.1:   │   │ :19800       │  ┌──────────────────┐ │
-│  │ 11434        │   │ http-server   │  │ openclaw         │ │
-│  │ (healthy)    │   │ probe results │  │ 127.0.0.1:46282  │ │
-│  └──────────────┘   └──────────────┘  │ Hostinger mgmt   │ │
-│                                       └──────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+/vault/.keys.enc exists?
+  YES → You are THE ORACLE (VPS container). Go to Section A.
+  NO  →
+    .env exists in repo root?
+      YES →
+        HOSTINGER_API_TOKEN is non-empty in .env?
+          YES → You are a REMOTE CONTROL with credentials. Go to Section B.
+          NO  → You are a DEAD REMOTE (file exists, batteries missing). Go to Section B.1.
+      NO  →
+        .env.example exists?
+          YES → You are a COLD START. Tell the user:
+                "Copy .env.example to .env and fill in HOSTINGER_API_TOKEN and GH_TOKEN."
+                You can still work on the codebase. You cannot manage the VPS. Go to Section C.
+          NO  → You are LOCAL ONLY. Work on the codebase. Go to Section C.
 ```
 
-### Volume: `locker-vault`
-Shared between key-locker (read-write) and claude-hub (read-only).
-Contains:
-- `.keys.enc` — `ANTHROPIC_API_KEY` and `GH_TOKEN`
-- `entrypoint.sh` — Main container entrypoint
-- `bootstrap.sh` — Repo cloning, CLAUDE.md sync, memory sync, Claude Flow init
-- `CLAUDE.md` — This file (synced to /root/projects/)
-- `MEMORY.md` — Persistent memory for Claude Code sessions
+**The rule:** There is exactly ONE Oracle (the dockerized Claude on the VPS). Every other Claude instance — chat sessions, local CLI, web sessions — is a **Remote Control**. Remote Controls talk to the Oracle, they don't try to be it.
 
 ---
 
-## 3. Boot Sequence
+## A. YOU ARE THE ORACLE
 
-When claude-hub starts (or restarts), this happens:
+You are Claude Code running inside `claude-hub` on the Hostinger VPS (187.77.211.80).
+You are the persistent, always-on brain. You have:
 
-```
-1. entrypoint.sh loads /vault/.keys.enc → exports ANTHROPIC_API_KEY, GH_TOKEN
-2. Installs tmux (container FS doesn't persist, but npm globals on volume do)
-3. First-run only: installs git, python3, gh CLI, claude-code, ruflo
-4. Runs bootstrap.sh:
-   a. Sets up git credentials from GH_TOKEN
-   b. Clones launchplugai/claude-hub (if missing)
-   c. Clones launchplugai/BetApp (if missing)
-   d. Syncs CLAUDE.md from vault → /root/projects/CLAUDE.md
-   e. Configures Claude Code settings (remoteControl: true)
-   f. Syncs memory files to Claude Code memory dir
-   g. Runs ruflo init --full (Claude Flow V3)
-5. Starts Claude Code in tmux session "claude"
-6. Watchdog loop: restarts Claude if tmux session dies
-```
+- Direct filesystem access to all repos at `/root/projects/`
+- Tokens loaded from `/vault/.keys.enc` ($ANTHROPIC_API_KEY, $GH_TOKEN)
+- Access to Ollama on localhost:11434
+- Network access to all containers (host network mode)
+- tmux session with watchdog (auto-restart)
 
----
+**Your job:** Execute. You own the codebase, the containers, and the deployment.
+When Remote Controls send instructions, you carry them out.
 
-## 4. Hostinger API Reference
+**Key paths:**
+- Repos: `/root/projects/{marvin, claude-hub, BetApp}`
+- Vault: `/vault/` (read-only — update via key-locker redeploy)
+- Memory: synced from vault on boot
 
-**Auth:** `Authorization: Bearer <ANTHROPIC_API_KEY>`
-**Base:** `https://developers.hostinger.com/api/vps/v1`
-
-### Key Endpoints
-
-| Action | Method | Path |
-|--------|--------|------|
-| List VMs | GET | `/virtual-machines` |
-| VM details | GET | `/virtual-machines/{id}` |
-| List Docker projects | GET | `/virtual-machines/{id}/docker` |
-| Get project compose | GET | `/virtual-machines/{id}/docker/{name}` |
-| Create project | POST | `/virtual-machines/{id}/docker` |
-| Update project | POST | `/virtual-machines/{id}/docker/{name}/update` |
-| Get project logs | GET | `/virtual-machines/{id}/docker/{name}/logs` |
-| Get containers | GET | `/virtual-machines/{id}/docker/{name}/containers` |
-| Start project | POST | `/virtual-machines/{id}/docker/{name}/start` |
-| Stop project | POST | `/virtual-machines/{id}/docker/{name}/stop` |
-| Restart project | POST | `/virtual-machines/{id}/docker/{name}/restart` |
-| Delete project | DELETE | `/virtual-machines/{id}/docker/{name}/down` |
-| Start VM | POST | `/virtual-machines/{id}/start` |
-| Stop VM | POST | `/virtual-machines/{id}/stop` |
-| Restart VM | POST | `/virtual-machines/{id}/restart` |
-| Get actions | GET | `/virtual-machines/{id}/actions` |
-| Action status | GET | `/virtual-machines/{id}/actions/{actionId}` |
-| Set root password | PUT | `/virtual-machines/{id}/root-password` |
-| Firewall list | GET | `/firewall` |
-| Create firewall | POST | `/firewall` |
-
-### VM ID: `1405440`
-
-### Docker Projects
-
-| Project | Image | State | Ports | Notes |
-|---------|-------|-------|-------|-------|
-| `claude-hub` | node:20-bookworm | running | host network | Claude Code + tmux |
-| `key-locker` | alpine:3.19 | exited | none | Run-once vault provisioner |
-| `marvin-skills` | node:20-slim | running | 19800 | HTTP probe server |
-| `ollama-wmf4` | ollama/ollama | running (healthy) | 127.0.0.1:11434 | Local LLM |
-| `openclaw-quzk` | ghcr.io/hostinger/hvps-openclaw | running | 127.0.0.1:46282 | Hostinger mgmt |
+**Skip to Section 1 for system architecture.**
 
 ---
 
-## 5. Operating Procedures
+## B. YOU ARE A REMOTE CONTROL
 
-### Restart claude-hub (bootstrap fresh)
+You are an ephemeral Claude session (chat, local CLI, or web).
+You have tokens in `.env` and can manage the VPS via the Hostinger REST API.
+
+**Your capabilities:**
+- Read/write code in this repo
+- Manage VPS containers via Hostinger API (deploy, restart, logs)
+- Push code to GitHub for the Oracle to pick up
+- Issue commands to the Oracle via remote control
+
+**Initialization:**
 ```bash
-# Via Hostinger API
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  "$API/virtual-machines/1405440/docker/claude-hub/restart"
+source .env  # loads HOSTINGER_API_TOKEN, GH_TOKEN, etc.
 ```
 
-### Update vault keys
-1. Update key-locker compose to include new keys in `.keys.enc`
-2. Delete old key-locker: `DELETE .../docker/key-locker/down`
-3. Recreate: `POST .../docker` with `{"project_name": "key-locker", "content": "..."}`
-4. Restart claude-hub to pick up new keys
-
-### Update entrypoint/bootstrap scripts
-Same as updating vault keys — scripts are base64-encoded in the key-locker compose.
-Decode → modify → re-encode → update compose → redeploy key-locker → restart claude-hub.
-
-### Deploy new Docker project
+**Verify VPS is alive:**
 ```bash
-curl -X POST -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"project_name": "my-project", "content": "<docker-compose YAML>"}' \
-  "$API/virtual-machines/1405440/docker"
+curl -s -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
+  "https://developers.hostinger.com/api/vps/v1/virtual-machines/1405440/docker" \
+  | python3 -m json.tool
 ```
 
-### Check container health
-```bash
-# List all projects
-curl -H "Authorization: Bearer $TOKEN" "$API/virtual-machines/1405440/docker"
+**Available slash commands:** `/bootstrap`, `/vps-status`, `/vps-logs`, `/vps-deploy`, `/vault-update`
 
-# Get logs
-curl -H "Authorization: Bearer $TOKEN" "$API/virtual-machines/1405440/docker/{name}/logs"
-```
+**Skip to Section 1 for system architecture.**
 
 ---
 
-## 6. Repositories
+## B.1. YOU ARE A DEAD REMOTE (batteries missing)
 
-| Repo | Purpose | VPS Path |
-|------|---------|----------|
-| `launchplugai/marvin` | Agentic system core (this repo) | `/root/projects/marvin` (planned) |
-| `launchplugai/claude-hub` | Claude Hub infrastructure | `/root/projects/claude-hub` |
-| `launchplugai/BetApp` | Betting app project | `/root/projects/BetApp` |
+You found `.env` but the tokens are empty. You have the wiring but no power.
 
----
+**The source of truth for all tokens is the key-locker vault on the VPS.**
+The vault lives on a Docker volume (`locker-vault`) mounted read-only at `/vault/` inside `claude-hub`.
+The key-locker container writes tokens to `/vault/.keys.enc` on deploy.
 
-## 7. Marvin Architecture (Quick Reference)
+**Token recovery — try in order:**
 
-```
-Transmission → Cache (3-tier) → Lobby (Groq 8B) → Receptionist (Haiku)
-    → Department Heads (Ralph/Ira/Tess via Kimi 2.5)
-    → Boss (escalation) → Emergency (Opus, last resort)
-```
+1. **Ask the user.** They may have the tokens stored elsewhere (password manager, Hostinger dashboard, GitHub settings). Say:
+   > "Your `.env` has empty tokens. I need `HOSTINGER_API_TOKEN` and `GH_TOKEN` to connect to the VPS.
+   > The Hostinger token is at: Hostinger panel → API Keys.
+   > The GitHub token is at: GitHub → Settings → Developer settings → Personal access tokens.
+   > Paste them here and I'll store them securely in `.env` (gitignored)."
 
-**Execution waterfall:** Claude CLI → Groq Pool → Kimi 2.5 → Boss → Opus API
-
-**Agents:** Ralph (Scrum), Ira (Infra), Tess (Test)
-
-**Phase Status:** Phase 1 routing integration in progress (cache + classifier done)
-
----
-
-## 8. Key Constraints
-
-- Docker compose content limit: **8192 characters** (Hostinger API)
-- Container memory: 4 GB (claude-hub)
-- No SSH access via API — management is Docker-only via Hostinger API
-- Vault volume is read-only from claude-hub
-- Ollama and OpenClaw bind to 127.0.0.1 only (not externally accessible)
-- claude-hub uses `network_mode: host` — can reach all localhost services
-
----
-
-## 9. Secrets & Token Discovery
-
-### Where tokens live
-
-| Context | Hostinger API Token | GH_TOKEN |
-|---------|--------------------:|:---------|
-| **VPS (claude-hub container)** | `$ANTHROPIC_API_KEY` env var (loaded from vault) | `$GH_TOKEN` env var (loaded from vault) |
-| **Local / new chat session** | `.env` file in repo root (gitignored) | `.env` file in repo root (gitignored) |
-| **Vault source of truth** | `/vault/.keys.enc` on locker-vault volume | `/vault/.keys.enc` on locker-vault volume |
-
-### Cold Start — New Session Without Context
-
-If you're a new Claude Code session with no prior context, do this:
-
-1. **Check if `.env` exists** in the repo root. If yes, read it for tokens.
-2. **If no `.env`**, copy `.env.example` to `.env` and ask the user to fill in the tokens.
-3. **To verify tokens work**, run:
+2. **If user provides one token (Hostinger):** Use it to pull vault contents:
    ```bash
-   source .env
-   curl -s -H "Authorization: Bearer $HOSTINGER_API_TOKEN" \
-     "$HOSTINGER_API_BASE/virtual-machines/$HOSTINGER_VM_ID/docker" \
-     | python3 -m json.tool | head -5
+   curl -s -H "Authorization: Bearer $TOKEN" \
+     "https://developers.hostinger.com/api/vps/v1/virtual-machines/1405440/docker/key-locker" \
+     | python3 -c "import sys,json; print(json.load(sys.stdin))"
    ```
-4. **Once tokens are confirmed**, you have full VPS access. Read `hub-card.md` for the architecture.
+   The compose YAML contains the `printf` line with all secrets. Extract and populate `.env`.
 
-### Token Naming
+3. **If no tokens available:** Fall through to Section C (Local Only). You can still work on code, run tests, and push to GitHub — you just can't manage the VPS.
+
+**Important:** `.env` is gitignored. Never commit tokens. The only persistent token store is the vault on the VPS.
+
+**Once tokens are populated, go back to Section B.**
+
+---
+
+## C. YOU ARE LOCAL ONLY
+
+No VPS access. Work on the codebase:
+- Run tests: `python -m pytest tests/ -v`
+- Read architecture: `docs/designs/` (8 design docs)
+- Read decisions: `docs/ADRs/` (architecture decision records)
+
+**Skip to Section 1 for system architecture.**
+
+---
+
+## 1. WHAT IS MARVIN
+
+Marvin is a multi-agent LLM routing engine. It sits between the user and multiple LLM APIs, routing requests to the cheapest model that can handle them.
+
+```
+User Message
+    ↓
+LOBBY (Groq 8B) — classifies intent             ← src/lobby/
+    ↓
+CACHE (SQLite) — returns cached if hit           ← src/cache/
+    ↓
+RATE LIMITER — checks provider health            ← src/rate_limiter/
+    ↓
+RECEPTIONIST (Haiku) — routes to department      ← Phase 2
+    ↓
+DEPARTMENT HEAD (Kimi 2.5) — does the work       ← Phase 3
+    ↓
+BOSS → EMERGENCY (escalation)                    ← Phase 4
+```
+
+**Execution waterfall:** Groq (free) → Kimi 2.5 → Haiku → Boss → Opus (last resort)
+**Budget:** $100/month — Groq $0, Haiku $20, Kimi $60, Sonnet $15, Opus $5
+
+### Phase Status
+
+| Phase | What | Status |
+|-------|------|--------|
+| Phase 1 | Cache + Lobby + Rate Limiter | **COMPLETE** — 47 tests passing |
+| Phase 2 | Receptionist + Dispatch | Pending |
+| Phase 3 | Department Heads (Ralph/Ira/Tess) | Pending |
+| Phase 4 | Boss + Emergency + Hardening | Pending |
+
+---
+
+## 2. CODEBASE MAP
+
+```
+src/
+├── cache/
+│   ├── cache.py             # SQLite cache with TTL, metrics, invalidation
+│   ├── key_generator.py     # State-aware cache key generation (git state)
+│   ├── git_invalidation.py  # Post-commit hook → clear stale cache
+│   └── schema.sql           # Full DB schema (cache, metrics, rate limits, envelopes)
+├── lobby/
+│   └── classifier.py        # Groq 8B intent classifier (keyword → LLM → fallback)
+└── rate_limiter/
+    ├── headers.py            # Parse rate limit headers from all providers
+    └── tracker.py            # Health tracking, fallback selection, priority diversion
+
+docs/
+├── designs/                  # 8 architecture documents (the blueprints)
+│   ├── 01-transmission.md   # Request envelope protocol
+│   ├── 02-cache-layer.md    # Cache architecture & schema
+│   ├── 03-lobby.md          # Intent classifier design
+│   ├── 04-receptionist.md   # Haiku routing logic
+│   ├── 05-departments.md    # Ralph/Ira/Tess agent specs
+│   ├── 06-rate-limiter.md   # Health monitor & fallback chains
+│   ├── 07-boss-emergency.md # Escalation & arbitration
+│   └── 08-build-plan.md     # Phased construction timeline
+└── ADRs/                     # Architecture decision records
+
+tests/unit/                   # pytest suite (47 tests)
+infra/                        # Docker compose, entrypoint, bootstrap scripts
+```
+
+---
+
+## 3. VPS INFRASTRUCTURE
+
+### Server: Hostinger KVM 2
+- **IP:** 187.77.211.80 | **VM ID:** 1405440
+- **OS:** Ubuntu 24.04 + Docker | **RAM:** 8 GB | **Disk:** 100 GB
+- **API:** `https://developers.hostinger.com/api/vps/v1`
+
+### Containers
+
+| Container | Purpose | State | Access |
+|-----------|---------|-------|--------|
+| `betapp` | DNA Bet Engine (FastAPI/Uvicorn) | running | :19801 |
+| `claude-hub` | The Oracle — Claude Code in tmux | running | host network |
+| `key-locker` | Vault provisioner (run-once) | exited | — |
+| `marvin-skills` | HTTP probe server | running | :19800 |
+| `ollama-wmf4` | Local LLM | healthy | 127.0.0.1:11434 |
+| `openclaw-quzk` | Hostinger mgmt agent | running | 127.0.0.1:46282 |
+
+### API Quick Reference
+
+| Action | Call |
+|--------|------|
+| List containers | `GET /virtual-machines/1405440/docker` |
+| Container logs | `GET /virtual-machines/1405440/docker/{name}/logs` |
+| Restart | `POST /virtual-machines/1405440/docker/{name}/restart` |
+| Deploy | `POST /virtual-machines/1405440/docker` body: `{project_name, content}` |
+| Update compose | `POST /virtual-machines/1405440/docker/{name}/update` body: `{content}` |
+| Delete | `DELETE /virtual-machines/1405440/docker/{name}/down` |
+
+**Auth:** `Authorization: Bearer $HOSTINGER_API_TOKEN`
+**Compose limit:** 8192 chars max.
+
+---
+
+## 4. TOKENS & SECRETS
+
+| Context | Hostinger API Token | GitHub Token |
+|---------|---------------------|--------------|
+| VPS (Oracle) | `$ANTHROPIC_API_KEY` from vault | `$GH_TOKEN` from vault |
+| Remote Control | `$HOSTINGER_API_TOKEN` from `.env` | `$GH_TOKEN` from `.env` |
+| Vault (source) | `/vault/.keys.enc` | `/vault/.keys.enc` |
 
 The Hostinger API token is stored as `ANTHROPIC_API_KEY` on the VPS for historical reasons.
-In `.env` it's called `HOSTINGER_API_TOKEN` for clarity. They're the same value.
+In `.env` it's called `HOSTINGER_API_TOKEN`. Same value.
 
 ---
 
-## 10. Available Commands
+## 5. DEEP DIVES (read when needed, not upfront)
 
-These slash commands are defined in `.claude/commands/` and work in any session on this repo:
+| Document | When to read it |
+|----------|-----------------|
+| `hub-card.md` | VPS boot sequence, volume architecture, failure recovery |
+| `CHAT_PACKAGE.md` | Full context dump (BetApp, DNA engine, Claude Hub details) |
+| `docs/designs/*.md` | Building new modules — the architectural blueprints |
+| `docs/ADRs/*.md` | Understanding past decisions and constraints |
+| `PRD-openclaw-marvin.md` | Product requirements, agent specs, budget model |
+| `SIM_OFFICE_BUILD_PLAN_v1.md` | Sims engine (Layers 2-7): life, growth, relationships |
 
-| Command | Purpose |
-|---------|---------|
-| `/bootstrap` | Load full system context + check VPS health |
-| `/vps-status` | List all Docker containers and their states |
-| `/vps-logs` | Tail logs from a specific container |
-| `/vps-deploy` | Deploy or update a Docker project |
-| `/vault-update` | Update secrets or scripts in the vault |
+---
+
+## 6. CONSTRAINTS
+
+- Docker compose limit: **8192 characters** (Hostinger API)
+- Container memory: **4 GB** (claude-hub)
+- No SSH — Docker-only management via Hostinger API
+- Vault is **read-only** from claude-hub
+- Ollama/OpenClaw bind to localhost only
+- claude-hub uses `network_mode: host` — reaches all local services

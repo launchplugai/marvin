@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Oracle // DNA Systems</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#050508;--s1:#0b0b12;--s2:#111119;--s3:#18182a;
+  --brd:rgba(255,255,255,0.06);--brd2:rgba(255,255,255,0.1);
+  --tx:#d4d4dc;--tx2:#8888a0;--tx3:#555568;
+  --helix1:#6366f1;--helix2:#ec4899;--helix3:#8b5cf6;
+  --alive:#22c55e;--warn:#eab308;--dead:#ef4444;--info:#3b82f6;
+  --glow1:rgba(99,102,241,0.15);--glow2:rgba(236,72,153,0.15);
+  --r:10px;
+}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;overflow-x:hidden}
+
+/* === DNA HELIX CANVAS === */
+#helixCanvas{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:0.4}
+
+/* === LAYOUT === */
+.shell{position:relative;z-index:1;max-width:1440px;margin:0 auto;padding:0 28px 40px}
+
+/* === TOP BAR === */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:20px 0;border-bottom:1px solid var(--brd)}
+.topbar-left{display:flex;align-items:center;gap:16px}
+.oracle-mark{width:42px;height:42px;border-radius:50%;background:conic-gradient(from 180deg,var(--helix1),var(--helix2),var(--helix3),var(--helix1));display:flex;align-items:center;justify-content:center;animation:orbitspin 8s linear infinite;position:relative}
+.oracle-mark::before{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--bg)}
+.oracle-mark span{position:relative;font-weight:800;font-size:15px;background:linear-gradient(135deg,var(--helix1),var(--helix2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+@keyframes orbitspin{to{transform:rotate(360deg)}}
+.topbar h1{font-size:18px;font-weight:700;letter-spacing:-0.3px}
+.topbar h1 em{font-style:normal;font-weight:400;color:var(--tx2);font-size:14px;margin-left:8px}
+.topbar-right{display:flex;align-items:center;gap:14px}
+.heartbeat{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--tx2)}
+.heart{width:10px;height:10px;border-radius:50%;background:var(--alive);box-shadow:0 0 12px rgba(34,197,94,0.5);animation:heartbeat 1.5s ease-in-out infinite}
+@keyframes heartbeat{0%,100%{transform:scale(1);opacity:1}30%{transform:scale(1.3);opacity:0.8}60%{transform:scale(0.9);opacity:1}}
+.btn{background:var(--s2);border:1px solid var(--brd2);color:var(--tx);padding:7px 16px;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:500;transition:all 0.2s}
+.btn:hover{background:var(--s3);border-color:var(--helix1)}
+.tab-row{display:flex;gap:2px;background:var(--s1);border-radius:8px;padding:2px;border:1px solid var(--brd)}
+.tab{padding:6px 16px;border-radius:6px;font-size:12px;font-weight:500;color:var(--tx2);cursor:pointer;transition:all 0.2s;border:none;background:none}
+.tab.active{background:var(--s3);color:var(--tx);box-shadow:0 1px 3px rgba(0,0,0,0.3)}
+.tab:hover:not(.active){color:var(--tx)}
+
+/* === VIEWS === */
+.view{display:none}.view.active{display:block}
+
+/* === SECTION HEADERS === */
+.section-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--tx3);margin:28px 0 14px;display:flex;align-items:center;gap:10px}
+.section-label::after{content:'';flex:1;height:1px;background:var(--brd)}
+
+/* === ORGANISM ROW (vital signs) === */
+.vitals{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:14px}
+.vital{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:20px;position:relative;overflow:hidden;transition:border-color 0.3s}
+.vital:hover{border-color:var(--helix1)}
+.vital-glow{position:absolute;top:-20px;right:-20px;width:80px;height:80px;border-radius:50%;filter:blur(40px);opacity:0.3;pointer-events:none}
+.vital-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--tx3);margin-bottom:10px}
+.vital-value{font-size:32px;font-weight:700;line-height:1;letter-spacing:-1px}
+.vital-sub{font-size:11px;color:var(--tx2);margin-top:6px}
+.v-green .vital-value{color:var(--alive)}.v-green .vital-glow{background:var(--alive)}
+.v-warn .vital-value{color:var(--warn)}.v-warn .vital-glow{background:var(--warn)}
+.v-dead .vital-value{color:var(--dead)}.v-dead .vital-glow{background:var(--dead)}
+.v-helix .vital-value{background:linear-gradient(135deg,var(--helix1),var(--helix2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}.v-helix .vital-glow{background:var(--helix1)}
+.v-info .vital-value{color:var(--info)}.v-info .vital-glow{background:var(--info)}
+
+/* === CONTAINER ORGANISMS === */
+.organisms{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:14px}
+.organism{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:16px;position:relative;transition:all 0.3s}
+.organism:hover{border-color:var(--helix2);transform:translateY(-2px)}
+.organism-status{width:8px;height:8px;border-radius:50%;position:absolute;top:16px;right:16px}
+.organism-status.running{background:var(--alive);box-shadow:0 0 8px rgba(34,197,94,0.4)}
+.organism-status.exited{background:var(--tx3)}
+.organism-status.healthy{background:var(--alive);box-shadow:0 0 8px rgba(34,197,94,0.4)}
+.organism-name{font-size:14px;font-weight:600;margin-bottom:4px}
+.organism-image{font-size:11px;color:var(--tx3);margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.organism-role{font-size:12px;color:var(--tx2);line-height:1.4}
+.organism-port{display:inline-block;margin-top:8px;font-size:10px;padding:2px 8px;border-radius:4px;background:var(--s2);border:1px solid var(--brd);color:var(--tx2)}
+
+/* === NETWORK TOPOLOGY === */
+.topology{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:24px;margin-top:14px;position:relative;min-height:200px}
+#topoCanvas{width:100%;height:200px}
+
+/* === VOLUME MAP === */
+.volumes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.volume{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:18px}
+.volume-name{font-size:14px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.volume-name .dot{width:6px;height:6px;border-radius:50%;background:var(--helix3)}
+.volume-tree{font-size:12px;color:var(--tx2);line-height:1.8;font-family:'SF Mono','Fira Code',monospace;white-space:pre}
+
+/* === BOOT SEQUENCE === */
+.boot-seq{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:20px;margin-top:14px}
+.boot-step{display:flex;align-items:flex-start;gap:14px;padding:12px 0;border-bottom:1px solid var(--brd)}
+.boot-step:last-child{border-bottom:none}
+.boot-num{width:28px;height:28px;border-radius:50%;background:var(--s3);border:1px solid var(--brd2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--helix1);flex-shrink:0}
+.boot-desc{font-size:13px;line-height:1.5}.boot-desc strong{color:var(--tx)}
+.boot-desc span{color:var(--tx2)}
+
+/* === PROJECTS VIEW === */
+.project-card{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);margin-top:14px;overflow:hidden}
+.project-header{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid var(--brd);background:var(--s2)}
+.project-title{font-size:16px;font-weight:700;display:flex;align-items:center;gap:10px}
+.project-title .dot{width:10px;height:10px;border-radius:50%}
+.project-title .dot.live{background:var(--alive);box-shadow:0 0 8px rgba(34,197,94,0.4)}
+.project-meta{display:flex;gap:8px}
+.tag{font-size:10px;font-weight:600;padding:3px 10px;border-radius:20px;letter-spacing:0.5px}
+.tag-green{background:rgba(34,197,94,0.1);color:var(--alive);border:1px solid rgba(34,197,94,0.2)}
+.tag-blue{background:rgba(59,130,246,0.1);color:var(--info);border:1px solid rgba(59,130,246,0.2)}
+.tag-purple{background:rgba(139,92,246,0.1);color:var(--helix3);border:1px solid rgba(139,92,246,0.2)}
+.tag-warn{background:rgba(234,179,8,0.1);color:var(--warn);border:1px solid rgba(234,179,8,0.2)}
+.tag-red{background:rgba(239,68,68,0.1);color:var(--dead);border:1px solid rgba(239,68,68,0.2)}
+.project-body{padding:20px}
+.project-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.pstat{text-align:center;padding:14px;background:var(--s2);border-radius:8px;border:1px solid var(--brd)}
+.pstat-val{font-size:22px;font-weight:700}
+.pstat-label{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:0.8px;margin-top:4px}
+
+/* Endpoint probes inside project */
+.probe-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.probe{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--s2);border-radius:8px;border:1px solid var(--brd);font-size:12px;transition:border-color 0.2s}
+.probe:hover{border-color:var(--helix1)}
+.probe-left{display:flex;align-items:center;gap:8px}
+.probe-method{font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;letter-spacing:0.5px}
+.probe-method.get{color:var(--alive);background:rgba(34,197,94,0.1)}
+.probe-method.post{color:var(--info);background:rgba(59,130,246,0.1)}
+.probe-path{color:var(--tx2)}.probe-right{display:flex;align-items:center;gap:8px}
+.probe-dot{width:7px;height:7px;border-radius:50%}
+.probe-dot.ok{background:var(--alive)}.probe-dot.fail{background:var(--dead)}.probe-dot.pending{background:var(--tx3);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.probe-ms{font-size:11px;color:var(--tx3);min-width:45px;text-align:right}
+
+/* Feature flags */
+.flags-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+.flag{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--s2);border-radius:8px;border:1px solid var(--brd);font-size:12px}
+.flag-dot{width:8px;height:8px;border-radius:50%}
+.flag-dot.on{background:var(--alive);box-shadow:0 0 6px rgba(34,197,94,0.4)}
+.flag-dot.off{background:var(--tx3)}
+
+/* === KANBAN === */
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
+.kanban-col{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden}
+.kanban-head{padding:12px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid var(--brd);display:flex;align-items:center;justify-content:space-between;background:var(--s2)}
+.kanban-head .cnt{font-weight:400;color:var(--tx3)}
+.k-card{margin:8px;padding:12px;background:var(--s2);border:1px solid var(--brd);border-radius:8px;border-left:3px solid;transition:border-color 0.2s}
+.k-card:hover{border-color:var(--helix2)}
+.k-id{font-size:10px;color:var(--tx3);margin-bottom:3px;font-weight:600}
+.k-title{font-size:12px;line-height:1.5}
+.k-tags{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.k-tag{font-size:9px;padding:1px 6px;border-radius:3px;background:var(--s3);color:var(--tx3);border:1px solid var(--brd)}
+.k-done{border-left-color:var(--alive)}.k-active{border-left-color:var(--info)}.k-blocked{border-left-color:var(--dead)}.k-pending{border-left-color:var(--tx3)}
+
+/* === BLOCKERS === */
+.blocker-list{display:grid;gap:10px;margin-top:14px}
+.blocker{padding:16px;background:var(--s1);border:1px solid rgba(239,68,68,0.15);border-left:3px solid var(--dead);border-radius:var(--r)}
+.blocker-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.blocker-id{font-size:11px;font-weight:700;color:var(--dead)}
+.blocker-owner{font-size:10px;color:var(--tx3);padding:2px 8px;background:var(--s2);border-radius:4px}
+.blocker-title{font-size:13px;font-weight:500;margin-bottom:4px}
+.blocker-impact{font-size:11px;color:var(--tx3)}
+
+/* === VAULT VIEW === */
+.vault-panel{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:20px;margin-top:14px}
+.vault-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--brd);font-size:13px}
+.vault-row:last-child{border-bottom:none}
+.vault-key{color:var(--tx2);font-weight:500}
+.vault-val{font-family:'SF Mono','Fira Code',monospace;color:var(--tx);font-size:12px}
+.vault-val.masked{color:var(--tx3);letter-spacing:2px}
+
+/* === RESPONSIVE === */
+@media(max-width:1024px){
+  .vitals,.organisms{grid-template-columns:repeat(3,1fr)}
+  .kanban{grid-template-columns:repeat(2,1fr)}
+  .probe-grid{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .vitals,.organisms{grid-template-columns:1fr 1fr}
+  .kanban,.volumes,.project-stats{grid-template-columns:1fr}
+  .topbar{flex-direction:column;gap:12px;align-items:flex-start}
+}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<canvas id="helixCanvas"></canvas>
+
+<div class="shell">
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="oracle-mark"><span>O</span></div>
+      <h1>The Oracle<em>DNA Systems Control</em></h1>
+    </div>
+    <div class="topbar-right">
+      <div class="heartbeat"><div class="heart"></div><span id="lastPulse">Initializing...</span></div>
+      <div class="tab-row">
+        <button class="tab active" onclick="switchView('infrastructure')">Infrastructure</button>
+        <button class="tab" onclick="switchView('projects')">Projects</button>
+        <button class="tab" onclick="switchView('vault')">Vault</button>
+      </div>
+      <button class="btn" onclick="refreshAll()">Refresh</button>
+    </div>
+  </div>
+
+  <!-- ==================== INFRASTRUCTURE VIEW ==================== -->
+  <div class="view active" id="view-infrastructure">
+
+    <div class="section-label">Vital Signs</div>
+    <div class="vitals">
+      <div class="vital v-green" id="v-oracle"><div class="vital-glow"></div><div class="vital-label">Oracle</div><div class="vital-value" id="vOracleVal">--</div><div class="vital-sub">claude-hub container</div></div>
+      <div class="vital v-helix" id="v-containers"><div class="vital-glow"></div><div class="vital-label">Organisms</div><div class="vital-value" id="vContainerVal">--</div><div class="vital-sub">containers alive</div></div>
+      <div class="vital v-info" id="v-server"><div class="vital-glow"></div><div class="vital-label">Host</div><div class="vital-value">KVM2</div><div class="vital-sub">187.77.211.80</div></div>
+      <div class="vital v-green" id="v-ram"><div class="vital-glow"></div><div class="vital-label">Memory</div><div class="vital-value">8 GB</div><div class="vital-sub">Hostinger KVM</div></div>
+      <div class="vital v-helix" id="v-disk"><div class="vital-glow"></div><div class="vital-label">Storage</div><div class="vital-value">100G</div><div class="vital-sub">Ubuntu 24.04</div></div>
+    </div>
+
+    <div class="section-label">Container Organisms</div>
+    <div class="organisms" id="organismGrid">
+      <div class="organism"><div class="organism-status running"></div><div class="organism-name">claude-hub</div><div class="organism-image">node:20-bookworm</div><div class="organism-role">The Oracle brain. Claude Code in tmux, repos, tokens. Host network.</div><div class="organism-port">network: host</div></div>
+      <div class="organism"><div class="organism-status healthy"></div><div class="organism-name">ollama</div><div class="organism-image">ollama/ollama</div><div class="organism-role">Local LLM inference. Private, no external access.</div><div class="organism-port">127.0.0.1:11434</div></div>
+      <div class="organism"><div class="organism-status running"></div><div class="organism-name">marvin-skills</div><div class="organism-image">node:20-slim</div><div class="organism-role">HTTP probe server. Public diagnostics endpoint.</div><div class="organism-port">:19800</div></div>
+      <div class="organism"><div class="organism-status running"></div><div class="organism-name">openclaw</div><div class="organism-image">hostinger/hvps-openclaw</div><div class="organism-role">Hostinger management agent. Localhost only.</div><div class="organism-port">127.0.0.1:46282</div></div>
+      <div class="organism"><div class="organism-status exited"></div><div class="organism-name">key-locker</div><div class="organism-image">alpine:3.19</div><div class="organism-role">Vault provisioner. Run-once, writes secrets then exits.</div><div class="organism-port">exited (ok)</div></div>
+    </div>
+
+    <div class="section-label">Volume Architecture</div>
+    <div class="volumes">
+      <div class="volume">
+        <div class="volume-name"><span class="dot"></span>locker-vault (shared, external)</div>
+        <div class="volume-tree">.keys.enc        <span style="color:var(--helix2)">ANTHROPIC_API_KEY + GH_TOKEN</span>
+entrypoint.sh    <span style="color:var(--tx3)">Container startup script</span>
+bootstrap.sh     <span style="color:var(--tx3)">Repo cloner + context syncer</span>
+CLAUDE.md        <span style="color:var(--tx3)">Project instructions</span>
+MEMORY.md        <span style="color:var(--tx3)">Persistent memory</span></div>
+      </div>
+      <div class="volume">
+        <div class="volume-name"><span class="dot"></span>claude-home (claude-hub only)</div>
+        <div class="volume-tree">.claude-hub-ready  <span style="color:var(--alive)">First-run sentinel</span>
+.npm-global/       <span style="color:var(--tx3)">Claude Code, ruflo, globals</span>
+.claude/           <span style="color:var(--tx3)">Config + memory</span>
+.git-credentials   <span style="color:var(--helix2)">GitHub auth from GH_TOKEN</span>
+projects/          <span style="color:var(--info)">claude-hub/ BetApp/ marvin/</span></div>
+      </div>
+    </div>
+
+    <div class="section-label">Boot Sequence</div>
+    <div class="boot-seq">
+      <div class="boot-step"><div class="boot-num">1</div><div class="boot-desc"><strong>Load vault</strong> <span>Read /vault/.keys.enc, export ANTHROPIC_API_KEY + GH_TOKEN</span></div></div>
+      <div class="boot-step"><div class="boot-num">2</div><div class="boot-desc"><strong>Install tmux</strong> <span>apt install (every boot -- container FS is ephemeral)</span></div></div>
+      <div class="boot-step"><div class="boot-num">3</div><div class="boot-desc"><strong>First-run check</strong> <span>If no sentinel: install git, python3, gh, claude-code, ruflo</span></div></div>
+      <div class="boot-step"><div class="boot-num">4</div><div class="boot-desc"><strong>Bootstrap</strong> <span>Configure git creds, clone repos, sync CLAUDE.md + memory, init ruflo</span></div></div>
+      <div class="boot-step"><div class="boot-num">5</div><div class="boot-desc"><strong>Launch Claude Code</strong> <span>Start in tmux session "claude" with remote control enabled</span></div></div>
+      <div class="boot-step"><div class="boot-num">6</div><div class="boot-desc"><strong>Watchdog</strong> <span>Every 30s: check tmux session, restart if dead</span></div></div>
+    </div>
+  </div>
+
+  <!-- ==================== PROJECTS VIEW ==================== -->
+  <div class="view" id="view-projects">
+
+    <div class="section-label">Active Project</div>
+    <div class="project-card">
+      <div class="project-header">
+        <div class="project-title"><span class="dot live"></span>DNA Bet Engine</div>
+        <div class="project-meta">
+          <span class="tag tag-green">PRODUCTION</span>
+          <span class="tag tag-blue">VPS Docker</span>
+          <span class="tag tag-purple">FastAPI</span>
+        </div>
+      </div>
+      <div class="project-body">
+        <div class="project-stats">
+          <div class="pstat"><div class="pstat-val" id="pHealth" style="color:var(--alive)">--</div><div class="pstat-label">Health</div></div>
+          <div class="pstat"><div class="pstat-val" id="pUptime" style="color:var(--info)">--</div><div class="pstat-label">Uptime</div></div>
+          <div class="pstat"><div class="pstat-val" id="pEndpoints" style="color:var(--helix1)">--</div><div class="pstat-label">Endpoints</div></div>
+          <div class="pstat"><div class="pstat-val" id="pLatency" style="color:var(--helix2)">--</div><div class="pstat-label">Avg Latency</div></div>
+        </div>
+
+        <div class="section-label" style="margin-top:0">Endpoint Probes</div>
+        <div class="probe-grid" id="probeGrid"></div>
+
+        <div class="section-label">Feature Flags</div>
+        <div class="flags-row" id="flagsRow"></div>
+
+        <div class="section-label">Build Metadata</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" id="buildGrid"></div>
+      </div>
+    </div>
+
+    <div class="section-label">Repositories</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      <div class="organism"><div class="organism-status running"></div><div class="organism-name">launchplugai/marvin</div><div class="organism-image">Multi-agent LLM routing engine</div><div class="organism-role">Cache + Lobby + Rate Limiter (Phase 1 complete). 47 tests passing.</div><div class="organism-port">Phase 2 pending</div></div>
+      <div class="organism"><div class="organism-status running"></div><div class="organism-name">launchplugai/BetApp</div><div class="organism-image">DNA Bet Engine / Parlay eval</div><div class="organism-role">Sprint 1 locked. VPS Docker deploy (:19801). 1,068 tests passing.</div><div class="organism-port">production</div></div>
+      <div class="organism"><div class="organism-status running"></div><div class="organism-name">launchplugai/claude-hub</div><div class="organism-image">VPS infrastructure</div><div class="organism-role">Docker compose, entrypoint, bootstrap scripts. The Oracle's skeleton.</div><div class="organism-port">main</div></div>
+    </div>
+
+    <div class="section-label">Sprint Board</div>
+    <div class="kanban">
+      <div class="kanban-col"><div class="kanban-head" style="color:var(--alive)">Done <span class="cnt">12</span></div>
+        <div class="k-card k-done"><div class="k-id">S1-01</div><div class="k-title">Core evaluation engine</div><div class="k-tags"><span class="k-tag">dna-matrix</span></div></div>
+        <div class="k-card k-done"><div class="k-id">S1-02</div><div class="k-title">Leading Light pipeline</div><div class="k-tags"><span class="k-tag">eval</span></div></div>
+        <div class="k-card k-done"><div class="k-id">S1-03</div><div class="k-title">Tier gating</div><div class="k-tags"><span class="k-tag">api</span></div></div>
+        <div class="k-card k-done"><div class="k-id">S1-04</div><div class="k-title">Web UI 4-screen layout</div><div class="k-tags"><span class="k-tag">frontend</span></div></div>
+        <div class="k-card k-done"><div class="k-id">S1-05</div><div class="k-title">Health + build endpoints</div><div class="k-tags"><span class="k-tag">infra</span></div></div>
+        <div class="k-card k-done"><div class="k-id">S1-06</div><div class="k-title">VPS Docker deployment</div><div class="k-tags"><span class="k-tag">deploy</span></div></div>
+        <div class="k-card k-done"><div class="k-id">S1-07</div><div class="k-title">Playwright E2E suite</div><div class="k-tags"><span class="k-tag">test</span></div></div>
+        <div class="k-card k-done"><div class="k-id">S1-08</div><div class="k-title">Contract versioning</div><div class="k-tags"><span class="k-tag">api</span></div></div>
+      </div>
+      <div class="kanban-col"><div class="kanban-head" style="color:var(--info)">In Progress <span class="cnt">2</span></div>
+        <div class="k-card k-active"><div class="k-id">S2-01</div><div class="k-title">Pace shock detection heuristic</div><div class="k-tags"><span class="k-tag">heuristic</span><span class="k-tag">S2</span></div></div>
+        <div class="k-card k-active"><div class="k-id">S2-02</div><div class="k-title">Explainability layer</div><div class="k-tags"><span class="k-tag">eval</span><span class="k-tag">S2</span></div></div>
+      </div>
+      <div class="kanban-col"><div class="kanban-head" style="color:var(--dead)">Blocked <span class="cnt">3</span></div>
+        <div class="k-card k-blocked"><div class="k-id">B001</div><div class="k-title">PYTHONPATH import failures (127 tests)</div><div class="k-tags"><span class="k-tag">Tess</span><span class="k-tag">test</span></div></div>
+        <div class="k-card k-done"><div class="k-id">B002</div><div class="k-title">Railway deploy failures (RESOLVED — migrated to VPS)</div><div class="k-tags"><span class="k-tag">Ira</span><span class="k-tag">infra</span></div></div>
+        <div class="k-card k-blocked"><div class="k-id">B003</div><div class="k-title">DNS not pointed to VPS</div><div class="k-tags"><span class="k-tag">External</span></div></div>
+      </div>
+      <div class="kanban-col"><div class="kanban-head" style="color:var(--tx3)">Backlog <span class="cnt">4</span></div>
+        <div class="k-card k-pending"><div class="k-id">S2-03</div><div class="k-title">Rest asymmetry signal</div><div class="k-tags"><span class="k-tag">heuristic</span></div></div>
+        <div class="k-card k-pending"><div class="k-id">S2-04</div><div class="k-title">Injury leverage heuristic</div><div class="k-tags"><span class="k-tag">heuristic</span></div></div>
+        <div class="k-card k-pending"><div class="k-id">S2-05</div><div class="k-title">Git SHA injection in builds</div><div class="k-tags"><span class="k-tag">infra</span></div></div>
+        <div class="k-card k-pending"><div class="k-id">S2-06</div><div class="k-title">Voice/TTS enable</div><div class="k-tags"><span class="k-tag">feature</span></div></div>
+      </div>
+    </div>
+
+    <div class="section-label">Active Blockers</div>
+    <div class="blocker-list">
+      <div class="blocker"><div class="blocker-top"><span class="blocker-id">B001</span><span class="blocker-owner">Tess // Test</span></div><div class="blocker-title">PYTHONPATH not including dna-matrix/src -- 127 test failures</div><div class="blocker-impact">Fix: Add dna-matrix/src to PYTHONPATH in test config</div></div>
+      <div class="blocker"><div class="blocker-top"><span class="blocker-id">B002</span><span class="blocker-owner">Ira // Infra</span></div><div class="blocker-title">Railway deployment — RESOLVED</div><div class="blocker-impact">Migrated to VPS Docker container on 187.77.211.80:19801 (2026-03)</div></div>
+      <div class="blocker"><div class="blocker-top"><span class="blocker-id">B003</span><span class="blocker-owner">Ben // External</span></div><div class="blocker-title">DNS not pointed to VPS</div><div class="blocker-impact">Waiting on domain owner to update nameservers</div></div>
+    </div>
+  </div>
+
+  <!-- ==================== VAULT VIEW ==================== -->
+  <div class="view" id="view-vault">
+
+    <div class="section-label">Token Registry</div>
+    <div class="vault-panel">
+      <div class="vault-row"><span class="vault-key">ANTHROPIC_API_KEY</span><span class="vault-val masked">sk-ant-*****</span></div>
+      <div class="vault-row"><span class="vault-key">GH_TOKEN</span><span class="vault-val masked">ghp_*****</span></div>
+      <div class="vault-row"><span class="vault-key">Source</span><span class="vault-val">/vault/.keys.enc (locker-vault volume)</span></div>
+      <div class="vault-row"><span class="vault-key">Provisioner</span><span class="vault-val">key-locker (alpine:3.19, run-once)</span></div>
+      <div class="vault-row"><span class="vault-key">Access</span><span class="vault-val">claude-hub: read-only mount at /vault/</span></div>
+    </div>
+
+    <div class="section-label">Vault Update Procedure</div>
+    <div class="boot-seq">
+      <div class="boot-step"><div class="boot-num">1</div><div class="boot-desc"><strong>Fetch current compose</strong> <span>GET .../docker/key-locker</span></div></div>
+      <div class="boot-step"><div class="boot-num">2</div><div class="boot-desc"><strong>Modify compose</strong> <span>Update keys in printf line, scripts in base64 blobs</span></div></div>
+      <div class="boot-step"><div class="boot-num">3</div><div class="boot-desc"><strong>Delete old</strong> <span>DELETE .../docker/key-locker/down</span></div></div>
+      <div class="boot-step"><div class="boot-num">4</div><div class="boot-desc"><strong>Wait for action</strong> <span>Poll action status until success</span></div></div>
+      <div class="boot-step"><div class="boot-num">5</div><div class="boot-desc"><strong>Create new</strong> <span>POST .../docker with updated compose</span></div></div>
+      <div class="boot-step"><div class="boot-num">6</div><div class="boot-desc"><strong>Restart claude-hub</strong> <span>POST .../docker/claude-hub/restart to pick up new vault</span></div></div>
+    </div>
+
+    <div class="section-label">Persistence Map</div>
+    <div class="vault-panel">
+      <div class="vault-row"><span class="vault-key">API keys</span><span class="vault-val">locker-vault volume -- survives restarts + reboots</span></div>
+      <div class="vault-row"><span class="vault-key">Scripts (entrypoint/bootstrap)</span><span class="vault-val">locker-vault volume -- survives restarts + reboots</span></div>
+      <div class="vault-row"><span class="vault-key">CLAUDE.md + MEMORY.md</span><span class="vault-val">locker-vault + /root/projects/ -- survives restarts</span></div>
+      <div class="vault-row"><span class="vault-key">Cloned repos</span><span class="vault-val">claude-home volume -- survives restarts</span></div>
+      <div class="vault-row"><span class="vault-key">npm globals</span><span class="vault-val">claude-home volume -- survives restarts</span></div>
+      <div class="vault-row"><span class="vault-key">apt packages (tmux, git)</span><span class="vault-val" style="color:var(--warn)">LOST on container recreate -- reinstalled on boot</span></div>
+    </div>
+
+    <div class="section-label">Failure Recovery</div>
+    <div class="vault-panel">
+      <div class="vault-row"><span class="vault-key">Clone failed (auth)</span><span class="vault-val">Update key-locker with valid GH_TOKEN, restart</span></div>
+      <div class="vault-row"><span class="vault-key">tmux not found</span><span class="vault-val">Auto-installs on boot via entrypoint</span></div>
+      <div class="vault-row"><span class="vault-key">Claude crash loop</span><span class="vault-val">Check logs, verify ANTHROPIC_API_KEY</span></div>
+      <div class="vault-row"><span class="vault-key">Compose syntax error</span><span class="vault-val">GET compose, validate YAML, update</span></div>
+      <div class="vault-row"><span class="vault-key">Vault empty</span><span class="vault-val">Delete + recreate key-locker, restart claude-hub</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== DNA HELIX ANIMATION ====================
+const canvas = document.getElementById('helixCanvas');
+const ctx = canvas.getContext('2d');
+let W, H, frame = 0;
+
+function resizeCanvas() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function drawHelix() {
+  ctx.clearRect(0, 0, W, H);
+  const time = frame * 0.008;
+  const cx = W * 0.92;
+  const amplitude = 30;
+  const step = 12;
+
+  for (let y = -20; y < H + 20; y += step) {
+    const phase = y * 0.02 + time;
+    const x1 = cx + Math.sin(phase) * amplitude;
+    const x2 = cx + Math.sin(phase + Math.PI) * amplitude;
+    const depth1 = (Math.cos(phase) + 1) / 2;
+    const depth2 = (Math.cos(phase + Math.PI) + 1) / 2;
+
+    // Rungs
+    if (y % (step * 3) < step) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y);
+      ctx.lineTo(x2, y);
+      ctx.strokeStyle = `rgba(139,92,246,${0.06 + depth1 * 0.06})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Strand 1
+    ctx.beginPath();
+    ctx.arc(x1, y, 2 + depth1 * 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(99,102,241,${0.15 + depth1 * 0.25})`;
+    ctx.fill();
+
+    // Strand 2
+    ctx.beginPath();
+    ctx.arc(x2, y, 2 + depth2 * 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(236,72,153,${0.15 + depth2 * 0.25})`;
+    ctx.fill();
+  }
+
+  // Floating particles
+  for (let i = 0; i < 6; i++) {
+    const px = cx + Math.sin(time * 0.7 + i * 1.1) * 60;
+    const py = (H * 0.1 + i * H * 0.15 + time * 20) % H;
+    const size = 1.5 + Math.sin(time + i) * 0.5;
+    ctx.beginPath();
+    ctx.arc(px, py, size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(139,92,246,${0.2 + Math.sin(time + i) * 0.1})`;
+    ctx.fill();
+  }
+
+  frame++;
+  requestAnimationFrame(drawHelix);
+}
+drawHelix();
+
+// ==================== VIEW SWITCHING ====================
+function switchView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'projects') probeBetApp();
+}
+
+// ==================== BETAPP PROBING ====================
+const BETAPP = 'http://187.77.211.80:19801';
+const ENDPOINTS = [
+  { m:'GET', p:'/health', d:'Health check' },
+  { m:'GET', p:'/build', d:'Build metadata' },
+  { m:'GET', p:'/debug/contracts', d:'Contracts & flags' },
+  { m:'GET', p:'/history', d:'Eval history' },
+  { m:'GET', p:'/app', d:'Main UI' },
+  { m:'GET', p:'/app?screen=dashboard', d:'Dashboard' },
+  { m:'GET', p:'/app?screen=browse', d:'Browse' },
+  { m:'GET', p:'/app?screen=builder', d:'Builder' },
+  { m:'GET', p:'/app?screen=auth', d:'Auth' },
+  { m:'GET', p:'/panel', d:'Dev panel' },
+];
+
+async function probeOne(ep) {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(BETAPP + ep.p, { signal: AbortSignal.timeout(8000) });
+    const ms = Math.round(performance.now() - t0);
+    let data = null;
+    if ((r.headers.get('content-type')||'').includes('json')) {
+      try { data = await r.json(); } catch(e) {}
+    }
+    return { ...ep, status: r.status, ms, ok: r.ok, data };
+  } catch(e) {
+    return { ...ep, status: 0, ms: Math.round(performance.now() - t0), ok: false, data: null };
+  }
+}
+
+async function probeBetApp() {
+  const results = await Promise.all(ENDPOINTS.map(probeOne));
+
+  // Probe grid
+  const grid = document.getElementById('probeGrid');
+  grid.innerHTML = results.map(r => `
+    <div class="probe">
+      <div class="probe-left">
+        <span class="probe-method ${r.m.toLowerCase()}">${r.m}</span>
+        <span class="probe-path">${r.p}</span>
+      </div>
+      <div class="probe-right">
+        <span class="probe-ms">${r.ms}ms</span>
+        <span class="probe-dot ${r.ok ? 'ok' : 'fail'}"></span>
+      </div>
+    </div>
+  `).join('');
+
+  // Stats
+  const passing = results.filter(r => r.ok).length;
+  const avgMs = Math.round(results.reduce((s,r) => s + r.ms, 0) / results.length);
+  document.getElementById('pHealth').textContent = results.find(r => r.p === '/health')?.ok ? 'ALIVE' : 'DOWN';
+  document.getElementById('pHealth').style.color = results.find(r => r.p === '/health')?.ok ? 'var(--alive)' : 'var(--dead)';
+  document.getElementById('pEndpoints').textContent = `${passing}/${results.length}`;
+  document.getElementById('pLatency').textContent = `${avgMs}ms`;
+
+  // Contracts
+  const contracts = results.find(r => r.p === '/debug/contracts');
+  if (contracts?.data) {
+    const d = contracts.data;
+    const flags = d.feature_flags || {};
+    document.getElementById('flagsRow').innerHTML = Object.entries(flags).map(([k,v]) =>
+      `<div class="flag"><span class="flag-dot ${v?'on':'off'}"></span>${k.replace(/_/g,' ')}</div>`
+    ).join('');
+
+    if (d.service_info?.started) {
+      const diff = Date.now() - new Date(d.service_info.started).getTime();
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      document.getElementById('pUptime').textContent = h > 0 ? `${h}h ${m}m` : `${m}m`;
+    }
+  }
+
+  // Build info
+  const build = results.find(r => r.p === '/build');
+  if (build?.data) {
+    document.getElementById('buildGrid').innerHTML = Object.entries(build.data).map(([k,v]) => {
+      const isWarn = (k==='commit'||k==='git_sha') && v==='unknown';
+      return `<div class="probe" style="${isWarn?'border-color:rgba(234,179,8,0.3)':''}">
+        <span class="probe-path">${k}</span>
+        <span style="font-size:12px;${isWarn?'color:var(--warn)':''}">${v}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // Oracle vital
+  document.getElementById('vOracleVal').textContent = passing > 0 ? 'ALIVE' : 'DEAD';
+  document.getElementById('v-oracle').className = `vital ${passing > 0 ? 'v-green' : 'v-dead'}`;
+  document.getElementById('vContainerVal').textContent = '4/5';
+  document.getElementById('lastPulse').textContent = new Date().toLocaleTimeString();
+}
+
+function refreshAll() {
+  document.getElementById('lastPulse').textContent = 'Probing...';
+  probeBetApp();
+}
+
+// ==================== INIT ====================
+probeBetApp();
+setInterval(probeBetApp, 30000);
+</script>
+</body>
+</html>

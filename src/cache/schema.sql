@@ -111,3 +111,68 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 -- Insert initial migration
 INSERT OR IGNORE INTO schema_migrations (migration_name, applied_at)
 VALUES ('001_initial_schema', strftime('%s', 'now'));
+
+-- ============================================================
+-- CONVERSATION MEMORY PIPELINE (Phase 1.5)
+-- ============================================================
+
+-- CONTEXT BLOCKS: Raw conversation captures
+CREATE TABLE IF NOT EXISTS context_blocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    block_index INTEGER NOT NULL,       -- ordering within session
+    timestamp INTEGER NOT NULL,
+    role TEXT NOT NULL,                  -- user, assistant, system
+    content_hash TEXT NOT NULL,          -- SHA256 of raw_content
+    raw_content TEXT NOT NULL,
+    token_count INTEGER DEFAULT 0,
+    tags TEXT,                           -- JSON array of tags
+    metadata TEXT,                       -- JSON object for extensibility
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ctx_blocks_session ON context_blocks(session_id);
+CREATE INDEX IF NOT EXISTS idx_ctx_blocks_timestamp ON context_blocks(timestamp);
+CREATE INDEX IF NOT EXISTS idx_ctx_blocks_hash ON context_blocks(content_hash);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ctx_blocks_session_index ON context_blocks(session_id, block_index);
+
+-- CONTEXT SYNTHESIS: Compressed/summarized conversation blocks
+CREATE TABLE IF NOT EXISTS context_synthesis (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    block_range_start INTEGER NOT NULL,  -- first block_index covered
+    block_range_end INTEGER NOT NULL,    -- last block_index covered
+    context_level TEXT NOT NULL,          -- 'high' or 'low'
+    summary TEXT NOT NULL,               -- compressed text from Groq
+    model_used TEXT DEFAULT 'llama-3.1-8b-instant',
+    tokens_input INTEGER DEFAULT 0,      -- tokens sent to compressor
+    tokens_output INTEGER DEFAULT 0,     -- tokens received from compressor
+    tags TEXT,                            -- JSON array
+    metadata TEXT,                        -- JSON object
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ctx_synth_session ON context_synthesis(session_id);
+CREATE INDEX IF NOT EXISTS idx_ctx_synth_level ON context_synthesis(context_level);
+
+-- CONTEXT THREADS: Re-synthesized high-level and low-level threads
+CREATE TABLE IF NOT EXISTS context_threads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id TEXT UNIQUE NOT NULL,       -- deterministic ID for upsert
+    thread_type TEXT NOT NULL,            -- 'high_level' or 'low_level'
+    session_ids TEXT NOT NULL,            -- JSON array of session_ids covered
+    content TEXT NOT NULL,                -- the re-synthesized thread text
+    synthesis_count INTEGER DEFAULT 1,    -- how many times re-synthesized
+    model_used TEXT DEFAULT 'llama-3.1-8b-instant',
+    tokens_used INTEGER DEFAULT 0,
+    metadata TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ctx_threads_type ON context_threads(thread_type);
+CREATE INDEX IF NOT EXISTS idx_ctx_threads_updated ON context_threads(updated_at);
+
+-- Track context pipeline migrations
+INSERT OR IGNORE INTO schema_migrations (migration_name, applied_at)
+VALUES ('002_context_memory_pipeline', strftime('%s', 'now'));
